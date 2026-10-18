@@ -103,7 +103,7 @@ export const gitWorktreeSystem = {
     // A linked worktree keeps its submodules' repositories, with their local branches and commits, under its own
     // administrative directory (`.git/worktrees/<name>/modules`), which `git worktree prune` deletes.
     const administrativeDirectory = (
-      await runGit(worktreePath, ["rev-parse", "--path-format=absolute", "--git-dir"])
+      await runGit(worktreePath, ["rev-parse", "--absolute-git-dir"])
     ).trim();
     const submodulesFolder = path.join(administrativeDirectory, SUBMODULES_FOLDER_NAME);
     return existsSync(submodulesFolder) && readdirSync(submodulesFolder).length > 0;
