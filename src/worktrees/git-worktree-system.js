@@ -1,6 +1,7 @@
 /** @module worktrees/git-worktree-system Reads worktrees through git and removes their folders with `fs.rmSync`. */
 import { execFile } from "node:child_process";
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 import {
   DIRECTORY_REMOVAL_MAX_RETRIES,
@@ -15,6 +16,9 @@ import { parseWorktreeList } from "./parse-worktree-list.js";
 /**
  * @typedef {object} WorktreeSystem
  * @property {(folderPath: string) => boolean} folderExists - Whether a folder exists.
+ * @property {(folderPath: string) => string} toCanonicalPath - The folder's real path, with Windows short (8.3)
+ * names, symbolic links and junctions resolved, so two spellings of one folder compare equal; the absolute path when
+ * the folder does not exist.
  * @property {(folderPath: string) => string[]} listFolderEntries - Names directly inside a folder; throws when it
  * cannot read them.
  * @property {(folderPath: string) => Promise<WorktreeEntry[]>} listWorktrees - Worktrees of the repository the folder
@@ -46,6 +50,16 @@ async function runGit(folderPath, gitArguments) {
 /** @type {WorktreeSystem} */
 export const gitWorktreeSystem = {
   folderExists: (folderPath) => existsSync(folderPath),
+  toCanonicalPath(folderPath) {
+    try {
+      // The native variant asks the operating system, which expands short names such as `RUNNER~1`; the JavaScript
+      // variant does not.
+      return realpathSync.native(folderPath);
+    } catch {
+      // A missing folder has no real path; its absolute path is the best spelling to compare.
+      return path.resolve(folderPath);
+    }
+  },
   listFolderEntries: (folderPath) => readdirSync(folderPath),
   async listWorktrees(folderPath) {
     return parseWorktreeList(await runGit(folderPath, ["worktree", "list", "--porcelain"]));

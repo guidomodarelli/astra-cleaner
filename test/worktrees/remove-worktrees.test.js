@@ -24,6 +24,8 @@ function createSystem(overrides = {}) {
     /** @param {string} folderPath */
     folderExists: (folderPath) => [MAIN_PATH, FEATURE_PATH, DIRTY_PATH].includes(folderPath),
     listFolderEntries: () => ["package.json", "node_modules"],
+    /** @param {string} folderPath */
+    toCanonicalPath: (folderPath) => path.resolve(folderPath),
     listWorktrees: async () => [
       { path: MAIN_PATH, isMain: true, locked: false },
       { path: FEATURE_PATH, isMain: false, locked: false },

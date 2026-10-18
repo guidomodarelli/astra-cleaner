@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import process from "node:process";
 import { after, before, describe, it } from "node:test";
 import { promisify } from "node:util";
 import { REFUSAL_REASONS } from "../../src/worktrees/constants.js";
@@ -136,6 +137,28 @@ describe("removeWorktrees with real git", () => {
     assert.equal(existsSync(path.join(mainPath, ".git")), true);
     await git(mainPath, ["worktree", "unlock", worktreePath]);
   });
+
+  it(
+    "matches a worktree given by its Windows short (8.3) name",
+    { skip: process.platform !== "win32" && "only Windows has short names" },
+    async (testContext) => {
+      const worktreePath = await addWorktree("feature-short-name");
+      const shortPath = (
+        await execFileAsync("powershell", [
+          "-NoProfile",
+          "-Command",
+          `(New-Object -ComObject Scripting.FileSystemObject).GetFolder('${worktreePath}').ShortPath`,
+        ])
+      ).stdout.trim();
+      if (shortPath.toLowerCase() === worktreePath.toLowerCase()) {
+        testContext.skip("this volume does not generate short names");
+        return;
+      }
+      const result = await removeWorktrees({ paths: [shortPath], currentDirectory: fixtureFolder, ...createOutput() });
+      assert.deepEqual(result.refused, []);
+      assert.equal(existsSync(worktreePath), false);
+    },
+  );
 
   it("refuses a plain folder that is not a worktree", async () => {
     const plainFolder = path.join(fixtureFolder, "plain-folder");

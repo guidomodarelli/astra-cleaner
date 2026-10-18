@@ -41,6 +41,7 @@ export interface WorktreeRemovalInput {
 /** Git and file system access. */
 export interface WorktreeSystem {
   folderExists(folderPath: string): boolean;
+  toCanonicalPath(folderPath: string): string;
   listFolderEntries(folderPath: string): string[];
   listWorktrees(folderPath: string): Promise<WorktreeEntry[]>;
   hasUncommittedChanges(worktreePath: string): Promise<boolean>;

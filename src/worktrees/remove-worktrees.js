@@ -1,5 +1,4 @@
 /** @module worktrees/remove-worktrees Removes git worktrees whose `git worktree remove` fails on long paths. */
-import path from "node:path";
 import process from "node:process";
 import { REFUSAL_REASONS, WORKTREES_LOG_PREFIX } from "./constants.js";
 import { decideWorktreeRemoval } from "./decide-worktree-removal.js";
@@ -81,7 +80,8 @@ export async function removeWorktrees({
   const result = { removedPaths: [], refused: [], failed: [] };
 
   for (const requestedPath of paths) {
-    const targetPath = path.resolve(requestedPath);
+    // Git prints long, link-free paths; the person may pass a short name, a link or a relative path to the same folder.
+    const targetPath = system.toCanonicalPath(requestedPath);
     const targetExists = system.folderExists(targetPath);
 
     /** @type {import("./decide-worktree-removal.js").WorktreeEntry[]} */
@@ -98,7 +98,10 @@ export async function removeWorktrees({
         folderEntries = null;
       }
       try {
-        worktrees = await system.listWorktrees(targetPath);
+        worktrees = (await system.listWorktrees(targetPath)).map((worktree) => ({
+          ...worktree,
+          path: system.toCanonicalPath(worktree.path),
+        }));
       } catch {
         // Outside a repository git fails; with no worktrees the decision keeps the folder as "not a worktree" and the
         // refusal below reports it.
@@ -118,7 +121,7 @@ export async function removeWorktrees({
       folderEntries,
       worktrees,
       hasUncommittedChanges,
-      currentDirectory,
+      currentDirectory: system.toCanonicalPath(currentDirectory),
       force,
       platform,
     });
