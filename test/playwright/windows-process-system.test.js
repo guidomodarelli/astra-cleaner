@@ -42,6 +42,20 @@ describe("parseProcessSnapshot", () => {
     assert.deepEqual([...snapshot.livingProcesses], [[10, null]]);
   });
 
+  it("keeps unknown or malformed ids and times as null, and drops living rows without an id", () => {
+    const snapshot = parseProcessSnapshot(
+      JSON.stringify({
+        webKitProcesses: [{ processId: "100", parentProcessId: null, executablePath: 42, startedAtMs: 1.5 }, null],
+        livingProcesses: [{ processId: null, startedAtMs: 1000 }, { startedAtMs: 1000 }],
+      }),
+    );
+    assert.deepEqual(snapshot.webKitProcesses, [
+      { processId: null, parentProcessId: null, executablePath: null, startedAtMs: null },
+      { processId: null, parentProcessId: null, executablePath: null, startedAtMs: null },
+    ]);
+    assert.equal(snapshot.livingProcesses.size, 0);
+  });
+
   it("treats empty output as no processes", () => {
     const snapshot = parseProcessSnapshot("  \r\n");
     assert.deepEqual(snapshot.webKitProcesses, []);

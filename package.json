@@ -1,6 +1,6 @@
 {
   "name": "@astra-kit/cleaner",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Limpiezas del entorno de desarrollo: procesos huérfanos de WebKit de Playwright en Windows, y más por dominio.",
   "type": "module",
   "license": "MIT",

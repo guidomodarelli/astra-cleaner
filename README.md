@@ -21,21 +21,36 @@ Requiere Node.js 20 o superior.
 
 En Windows, terminar un proceso no termina a sus hijos. Cuando una corrida de Playwright muere de golpe (el timeout de la herramienta de un agente, una terminal cerrada, `TerminateProcess`), `globalTeardown` nunca se ejecuta y los procesos de WebKit (`Playwright.exe`, `WebKitGPUProcess.exe`, `WebKitNetworkProcess.exe` y `WebKitWebProcess.exe`, bajo `%LOCALAPPDATA%\ms-playwright\webkit-*`) siguen vivos sin padre.
 
-Esos procesos heredan como directorio de trabajo la carpeta del repositorio y la mantienen bloqueada: un worktree no se puede borrar hasta que terminan. En macOS y Linux el navegador se lleva a sus descendientes consigo, así que ahí la limpieza no hace nada.
+La causa raíz combina tres cosas:
+
+- **Los navegadores heredan el directorio de trabajo del worker** que los lanza, es decir, la carpeta del repositorio o del worktree. Playwright no expone una opción para lanzarlos con otro `cwd`.
+- **En Windows los hijos no mueren con el padre.** Quien mata el runner con `TerminateProcess` (una herramienta con timeout, un agente, el administrador de tareas) termina solo ese proceso, no su árbol.
+- **Nada del runner llega a ejecutarse**: ni `globalTeardown` ni los handlers de `exit` o `SIGINT` corren ante `TerminateProcess`.
+
+Así quedan procesos de WebKit sin padre que mantienen bloqueada la carpeta: un worktree no se puede borrar hasta que terminan. La solución robusta sería lanzar el árbol dentro de un [Job Object](https://learn.microsoft.com/windows/win32/procthread/job-objects) con `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, que Windows cierra entero cuando muere su dueño, pero Node no expone Job Objects. Por eso la limpieza barre los huérfanos al empezar la siguiente corrida (`globalSetup`) y al terminar la actual (`globalTeardown`).
+
+En macOS y Linux el navegador se lleva a sus descendientes consigo, así que ahí la limpieza no hace nada.
 
 ### Qué cierra y qué no
 
 Un proceso se cierra solo cuando se cumplen las dos condiciones:
 
-1. Su ejecutable está dentro de una carpeta `ms-playwright` (sin importar mayúsculas ni separadores). Un WebKit instalado por otro programa nunca se toca.
-2. Su padre ya no existe, o el PID del padre fue reutilizado por un proceso más nuevo que el hijo (Windows reutiliza PIDs), o el padre es otro proceso de Playwright que se está cerrando como huérfano.
+1. Es `Playwright.exe`, `WebKitGPUProcess.exe`, `WebKitNetworkProcess.exe` o `WebKitWebProcess.exe` y su ejecutable está dentro de una carpeta `ms-playwright` (sin importar mayúsculas ni separadores). Un WebKit instalado por otro programa nunca se toca.
+2. Su padre ya no existe, o el PID del padre fue reutilizado por un proceso más nuevo que el hijo (Windows reutiliza PIDs), o el padre es un `Playwright.exe` huérfano que se cierra en la misma pasada (sus helpers no esperan a la próxima corrida).
 
 Reglas de seguridad:
 
 - Un proceso con el padre vivo pertenece a una corrida en curso, posiblemente de otra sesión, y **nunca** se cierra.
-- Si no se conoce la hora de inicio del padre o del hijo, se asume que el padre está vivo y el proceso **no** se cierra.
-- Los procesos de WebKit y la lista completa de procesos se leen en una sola llamada a PowerShell, así que una corrida que arranca en paralelo no se confunde con un huérfano.
-- Los errores al leer la lista o al cerrar un proceso se informan como aviso, con la operación y el PID, y nunca rompen la corrida de tests.
+- Si no se conoce la hora de inicio del padre o del hijo, se asume que el padre está vivo y el proceso **no** se cierra. Lo mismo si Windows no informa el PID, el PID del padre o la ruta del ejecutable.
+- Los errores al leer la lista o al cerrar un proceso (por ejemplo, uno trabado en terminación) se informan como aviso, con la operación, el PID y el código de error, y nunca rompen la corrida de tests.
+
+Consulta: una sola llamada a PowerShell, con la ventana oculta y un timeout de 30 segundos, filtra en WMI por nombre de ejecutable (el filtro se arma desde la misma lista de la constante `WEBKIT_EXECUTABLES`) y pide solo las propiedades necesarias. Si no hay procesos de WebKit termina ahí; si los hay, consulta únicamente los PIDs de sus padres. Los padres se leen después que los hijos, así que una corrida que arranca en paralelo no se confunde con un huérfano.
+
+Revalidación antes de cerrar: entre la consulta y el cierre, Windows puede reutilizar el PID de un huérfano, y `process.kill` mataría un proceso ajeno. Por eso, justo antes de cerrar, una consulta por lote verifica que cada PID siga siendo la misma instancia (misma hora de inicio). Los que ya no están o cambiaron de identidad no se cierran y cuentan como terminados; los que no se pueden verificar (hora desconocida) quedan corriendo, en `failedProcessIds`, con un aviso. Si la revalidación falla, no se cierra nada y se avisa. Esto achica la ventana de carrera, pero no la elimina.
+
+Espera de terminación: en Windows `process.kill` llama a `TerminateProcess`, que puede volver antes de que el proceso termine si tiene E/S pendiente, y mientras tanto sigue bloqueando la carpeta. Por eso, después de cerrar, la limpieza consulta por lote (cada 250 ms, hasta 10 segundos; cada consulta se acota al tiempo que queda, con un piso de 250 ms, y con el plazo vencido no se consulta más) si sigue corriendo la misma instancia, identificada por PID y hora de inicio para no confundirla con un PID reutilizado. Los que terminan quedan en `terminatedProcessIds`; los que no terminan a tiempo, o cuyo cierre no se pudo confirmar, quedan en `stillRunningProcessIds` con un aviso de que pueden seguir bloqueando la carpeta hasta reiniciar Windows. El `--dry-run` no espera.
+
+No hay handler de `exit` ni de `SIGINT`: un handler de `exit` solo admite código síncrono, ninguno de los dos corre ante `TerminateProcess` (el caso que motiva este paquete) y los workers también cargan el config, así que sumaría una consulta por worker sin cubrir nada.
 
 ### En `playwright.config`
 
@@ -49,7 +64,7 @@ export default defineConfig({
 });
 ```
 
-Playwright resuelve esos especificadores con `require.resolve` desde la carpeta del config. Si el config ya tiene su propio `globalSetup`, pasá una lista: `globalSetup: ["@astra-kit/cleaner/playwright/global-setup", "./e2e/setup.ts"]`.
+Playwright resuelve esos especificadores con `require.resolve` desde la carpeta del config y llama a cada entrada con su config, que la limpieza ignora (no lo toma como opciones). Si el config ya tiene su propio `globalSetup`, pasá una lista: `globalSetup: ["@astra-kit/cleaner/playwright/global-setup", "./e2e/setup.ts"]`.
 
 ### Desde la terminal
 
@@ -66,7 +81,7 @@ Fuera de Windows el subcomando informa que no aplica y termina con código 0.
 import { cleanOrphanWebKitProcesses, selectOrphanWebKitProcessIds } from "@astra-kit/cleaner/playwright";
 
 const result = await cleanOrphanWebKitProcesses({ dryRun: true });
-// { applies, orphanProcessIds, terminatedProcessIds, failedProcessIds }
+// { applies, orphanProcessIds, terminatedProcessIds, stillRunningProcessIds, failedProcessIds }
 ```
 
 `selectOrphanWebKitProcessIds(webKitProcesses, livingProcesses)` es la decisión pura: recibe los procesos y devuelve los PIDs a cerrar, sin tocar el sistema.
