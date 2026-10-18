@@ -6,6 +6,9 @@ export const CLI_NAME = "cleaner";
 /** Reports what a cleanup would do without doing it. */
 export const DRY_RUN_FLAG = "--dry-run";
 
+/** Separator that package managers may forward from `pnpm <script> -- <flags>`; it carries no meaning here. */
+export const ARGUMENT_SEPARATOR = "--";
+
 /** Prints the usage message. */
 export const HELP_FLAGS = ["--help", "-h"];
 

@@ -1,7 +1,7 @@
 /** @module cli/run-cli Parses the `cleaner` arguments and runs one cleanup subcommand. */
 import process from "node:process";
 import { CLEANUP_COMMANDS } from "./commands.js";
-import { CLI_NAME, DRY_RUN_FLAG, EXIT_CODE_SUCCESS, EXIT_CODE_USAGE_ERROR, HELP_FLAGS } from "./constants.js";
+import { ARGUMENT_SEPARATOR, CLI_NAME, DRY_RUN_FLAG, EXIT_CODE_SUCCESS, EXIT_CODE_USAGE_ERROR, HELP_FLAGS } from "./constants.js";
 
 /** @typedef {import("./commands.js").CleanupCommand} CleanupCommand */
 
@@ -36,14 +36,15 @@ export function formatUsage(commands) {
 
 /**
  * Runs the `cleaner` command. A subcommand that does not apply to the platform does nothing and succeeds.
- * @param {string[]} argv - Arguments after the binary name.
+ * @param {string[]} rawArgv - Arguments after the binary name; a bare `--` separator is ignored.
  * @param {CliOptions} [options] - Platform, subcommands and output, replaceable for tests.
  * @returns {Promise<number>} Process exit code.
  */
 export async function runCli(
-  argv,
+  rawArgv,
   { platform = process.platform, commands = CLEANUP_COMMANDS, log = console.log, warn = console.error } = {},
 ) {
+  const argv = rawArgv.filter((argument) => argument !== ARGUMENT_SEPARATOR);
   if (argv.length === 0 || argv.some((argument) => HELP_FLAGS.includes(argument))) {
     (argv.length === 0 ? warn : log)(formatUsage(commands));
     return argv.length === 0 ? EXIT_CODE_USAGE_ERROR : EXIT_CODE_SUCCESS;

@@ -60,6 +60,17 @@ describe("runCli", () => {
     assert.equal(runs[0].dryRun, true);
   });
 
+  it("ignores the -- separator that pnpm forwards from a script", async () => {
+    const { runs, command } = createWindowsOnlyCommand();
+    const exitCode = await runCli(["sample", "--", "--dry-run"], {
+      platform: "win32",
+      commands: { sample: command },
+      ...createOutput(),
+    });
+    assert.equal(exitCode, EXIT_CODE_SUCCESS);
+    assert.equal(runs[0].dryRun, true);
+  });
+
   it("does nothing and succeeds where the subcommand does not apply", async () => {
     const { runs, command } = createWindowsOnlyCommand();
     const output = createOutput();
