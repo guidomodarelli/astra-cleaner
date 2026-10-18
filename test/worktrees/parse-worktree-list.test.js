@@ -39,6 +39,14 @@ describe("parseWorktreeList", () => {
     ]);
   });
 
+  it("also reads the plain format that git 2.35 and earlier print", () => {
+    const porcelainOutput = "worktree C:/repos/app\r\nbare\r\n\r\nworktree C:/repos/app-locked\r\ndetached\r\nlocked\r\n\r\n";
+    assert.deepEqual(parseWorktreeList(porcelainOutput), [
+      { path: "C:/repos/app", isMain: true, locked: false },
+      { path: "C:/repos/app-locked", isMain: false, locked: true },
+    ]);
+  });
+
   it("returns nothing for empty output", () => {
     assert.deepEqual(parseWorktreeList(""), []);
   });

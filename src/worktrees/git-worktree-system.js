@@ -63,6 +63,23 @@ async function runGit(folderPath, gitArguments) {
   return stdout;
 }
 
+/**
+ * Lists the worktrees of the repository a folder belongs to. Asks for the NUL-delimited format first, which keeps any
+ * path intact; git 2.35 and earlier reject `-z`, so on failure it asks again for the plain format, whose only limit is
+ * a path with a newline. A folder outside a repository fails both and throws.
+ * @param {(folderPath: string, gitArguments: string[]) => Promise<string>} runGitCommand - Runs git in a folder.
+ * @param {string} folderPath - Folder inside the repository.
+ * @returns {Promise<WorktreeEntry[]>} Worktrees, main first.
+ */
+export async function listWorktreesWith(runGitCommand, folderPath) {
+  try {
+    return parseWorktreeList(await runGitCommand(folderPath, ["worktree", "list", "--porcelain", "-z"]));
+  } catch {
+    // Either `-z` is unknown to this git or the folder is not in a repository; the plain format tells them apart.
+    return parseWorktreeList(await runGitCommand(folderPath, ["worktree", "list", "--porcelain"]));
+  }
+}
+
 /** @type {WorktreeSystem} */
 export const gitWorktreeSystem = {
   folderExists: (folderPath) => existsSync(folderPath),
@@ -77,9 +94,7 @@ export const gitWorktreeSystem = {
     }
   },
   listFolderEntries: (folderPath) => readdirSync(folderPath),
-  async listWorktrees(folderPath) {
-    return parseWorktreeList(await runGit(folderPath, ["worktree", "list", "--porcelain", "-z"]));
-  },
+  listWorktrees: (folderPath) => listWorktreesWith(runGit, folderPath),
   async hasUncommittedChanges(worktreePath) {
     const statusOutput = await runGit(worktreePath, ["status", "--porcelain", "--untracked-files=all"]);
     return statusOutput.trim().length > 0;
