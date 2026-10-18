@@ -4,7 +4,7 @@ import process from "node:process";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { EXIT_CODE_SUCCESS, EXIT_CODE_USAGE_ERROR } from "../../src/cli/constants.js";
+import { EXIT_CODE_CLEANUP_INCOMPLETE, EXIT_CODE_SUCCESS, EXIT_CODE_USAGE_ERROR } from "../../src/cli/constants.js";
 import { runCli } from "../../src/cli/run-cli.js";
 
 const execFileAsync = promisify(execFile);
@@ -116,5 +116,104 @@ describe("runCli", () => {
       assert.equal(/** @type {{ code?: number }} */ (error).code, EXIT_CODE_USAGE_ERROR);
       return true;
     });
+  });
+});
+
+describe("runCli with subcommands that take paths and flags", () => {
+  /**
+   * Builds a fake subcommand that takes paths and `--force`, records its runs and returns a fixed exit code.
+   * @param {number | undefined} exitCode - Exit code the run returns.
+   */
+  function createPathsCommand(exitCode) {
+    /** @type {import("../../src/cli/commands.js").CommandContext[]} */
+    const runs = [];
+    return {
+      runs,
+      command: {
+        description: "Limpieza con rutas.",
+        argumentsUsage: "<ruta>... [--force]",
+        flags: ["--force"],
+        requiresPaths: true,
+        appliesTo: () => true,
+        /** @param {import("../../src/cli/commands.js").CommandContext} context */
+        async run(context) {
+          runs.push(context);
+          return exitCode;
+        },
+      },
+    };
+  }
+
+  it("passes the paths and the subcommand flags apart from --dry-run", async () => {
+    const { runs, command } = createPathsCommand(undefined);
+    const exitCode = await runCli(["paths", "a", "--force", "b", "--dry-run"], {
+      commands: { paths: command },
+      ...createOutput(),
+    });
+    assert.equal(exitCode, EXIT_CODE_SUCCESS);
+    assert.deepEqual(runs[0].paths, ["a", "b"]);
+    assert.deepEqual([...runs[0].flags], ["--force"]);
+    assert.equal(runs[0].dryRun, true);
+  });
+
+  it("returns the exit code of an incomplete cleanup", async () => {
+    const { command } = createPathsCommand(EXIT_CODE_CLEANUP_INCOMPLETE);
+    assert.equal(await runCli(["paths", "a"], { commands: { paths: command }, ...createOutput() }), EXIT_CODE_CLEANUP_INCOMPLETE);
+  });
+
+  it("requires a path where the subcommand needs one, and rejects paths where it takes none", async () => {
+    const { runs, command } = createPathsCommand(undefined);
+    const { command: noPathsCommand } = createWindowsOnlyCommand();
+    const missingPathOutput = createOutput();
+    assert.equal(
+      await runCli(["paths", "--force"], { commands: { paths: command }, ...missingPathOutput }),
+      EXIT_CODE_USAGE_ERROR,
+    );
+    assert.match(missingPathOutput.warnings.join("\n"), /indicá al menos una ruta/u);
+    const extraPathOutput = createOutput();
+    assert.equal(
+      await runCli(["sample", "extra"], { platform: "win32", commands: { sample: noPathsCommand }, ...extraPathOutput }),
+      EXIT_CODE_USAGE_ERROR,
+    );
+    assert.match(extraPathOutput.warnings.join("\n"), /no acepta argumentos \(extra\)/u);
+    assert.equal(runs.length, 0);
+  });
+
+  it("takes everything after -- as a path for subcommands that take paths", async () => {
+    const { runs, command } = createPathsCommand(undefined);
+    const exitCode = await runCli(["paths", "--dry-run", "--", "-feature", "--help"], {
+      commands: { paths: command },
+      ...createOutput(),
+    });
+    assert.equal(exitCode, EXIT_CODE_SUCCESS);
+    assert.deepEqual(runs[0].paths, ["-feature", "--help"]);
+    assert.equal(runs[0].dryRun, true);
+  });
+
+  it("keeps ignoring -- for subcommands without paths, as pnpm forwards it before the flags", async () => {
+    const { runs, command } = createWindowsOnlyCommand();
+    await runCli(["sample", "--", "--dry-run"], { platform: "win32", commands: { sample: command }, ...createOutput() });
+    assert.equal(runs[0].dryRun, true);
+  });
+
+  it("rejects a flag another subcommand accepts", async () => {
+    const { command: noFlagsCommand } = createWindowsOnlyCommand();
+    const output = createOutput();
+    assert.equal(
+      await runCli(["sample", "--force"], { platform: "win32", commands: { sample: noFlagsCommand }, ...output }),
+      EXIT_CODE_USAGE_ERROR,
+    );
+  });
+
+  it("shows each subcommand's arguments in the usage", async () => {
+    const { command } = createPathsCommand(undefined);
+    const output = createOutput();
+    await runCli(["--help"], { commands: { paths: command }, ...output });
+    assert.match(output.logs.join("\n"), /cleaner paths <ruta>\.\.\. \[--force\] \[--dry-run\]/u);
+  });
+
+  it("lists the worktrees cleanup in the real binary", async () => {
+    const { stdout } = await execFileAsync(process.execPath, [CLI_PATH, "--help"]);
+    assert.match(stdout, /worktrees\s+Borra worktrees de git/u);
   });
 });

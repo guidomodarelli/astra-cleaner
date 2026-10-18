@@ -1,7 +1,7 @@
 {
   "name": "@astra-kit/cleaner",
-  "version": "0.2.0",
-  "description": "Limpiezas del entorno de desarrollo: procesos huérfanos de WebKit de Playwright en Windows, y más por dominio.",
+  "version": "0.3.0",
+  "description": "Limpiezas del entorno de desarrollo: procesos huérfanos de WebKit de Playwright en Windows y worktrees de git con rutas largas.",
   "type": "module",
   "license": "MIT",
   "author": "Guido Modarelli",
@@ -34,6 +34,10 @@
     "./playwright/global-teardown": {
       "types": "./src/playwright/global-teardown.d.ts",
       "default": "./src/playwright/global-teardown.js"
+    },
+    "./worktrees": {
+      "types": "./src/worktrees/index.d.ts",
+      "default": "./src/worktrees/index.js"
     },
     "./package.json": "./package.json"
   },

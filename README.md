@@ -5,7 +5,7 @@ Limpiezas del entorno de desarrollo, una por dominio. Cada limpieza es independi
 | Dominio | Exportación | Subcomando | Plataformas |
 | --- | --- | --- | --- |
 | Procesos huérfanos de WebKit de Playwright | `@astra-kit/cleaner/playwright` | `cleaner playwright` | Windows |
-| Worktrees con `node_modules` (prevista) | `@astra-kit/cleaner/worktrees` | `cleaner worktrees` | — |
+| Worktrees de git con rutas largas en `node_modules` | `@astra-kit/cleaner/worktrees` | `cleaner worktrees` | Todas |
 
 ## Instalación
 
@@ -86,17 +86,63 @@ const result = await cleanOrphanWebKitProcesses({ dryRun: true });
 
 `selectOrphanWebKitProcessIds(webKitProcesses, livingProcesses)` es la decisión pura: recibe los procesos y devuelve los PIDs a cerrar, sin tocar el sistema.
 
+## Worktrees: carpetas que `git worktree remove` no puede borrar
+
+### Por qué existe
+
+En Windows, las rutas dentro de `node_modules` pasan fácilmente el límite de 260 caracteres. `git worktree remove` falla entonces con `Filename too long`, y lo hace a mitad de camino: ya borró el archivo `.git` del worktree y su registro, pero deja la carpeta con `node_modules`. `fs.rmSync` sí maneja esas rutas.
+
+### Qué borra y qué no
+
+`cleaner worktrees <ruta>...` borra la carpeta con `fs.rmSync` y después corre `git worktree prune` desde el worktree principal para quitar el registro. **La rama y sus commits quedan**: solo se borra la carpeta de trabajo.
+
+Borra:
+
+- Un worktree vinculado, sin bloquear y sin cambios sin commitear (incluidos archivos sin seguimiento).
+- El resto de un `git worktree remove` fallido: una carpeta sin registro cuyo único contenido es `node_modules`. No se pierde trabajo porque una instalación lo reconstruye.
+
+Nunca borra, ni con `--force`:
+
+- El worktree principal, que contiene el repositorio.
+- Un worktree bloqueado con `git worktree lock`.
+- La carpeta actual ni una que la contenga.
+- Una carpeta que no es un worktree y tiene algo más que `node_modules` (o está vacía, o no se puede leer).
+
+Con cambios sin commitear, o si `git status` no puede leer el worktree, lo conserva salvo con `--force`. Si un proceso mantiene un archivo abierto (`EBUSY`/`EPERM`), avisa y sugiere `cleaner playwright` cuando el culpable es un WebKit huérfano.
+
+### Desde la terminal
+
+```bash
+pnpm exec cleaner worktrees ../app-feature --dry-run   # muestra qué borraría
+pnpm exec cleaner worktrees ../app-feature ../app-fix  # los borra
+pnpm exec cleaner worktrees ../app-wip --force         # descarta cambios sin commitear
+```
+
+### Desde código
+
+```js
+import { removeWorktrees, decideWorktreeRemoval } from "@astra-kit/cleaner/worktrees";
+
+const result = await removeWorktrees({ paths: ["../app-feature"], dryRun: true });
+// { removedPaths, refused: [{ path, reason }], failed: [{ path, error }] }
+```
+
+`decideWorktreeRemoval(input)` es la decisión pura: recibe lo que se sabe de la carpeta y devuelve `remove`, `remove-leftover` o `refuse` con el motivo.
+
 ## CLI
 
 ```text
-cleaner <limpieza> [--dry-run]
+cleaner <limpieza> [argumentos] [--dry-run]
+cleaner playwright [--dry-run]
+cleaner worktrees <ruta>... [--force] [--dry-run]
 cleaner --help
 ```
 
 | Código de salida | Significado |
 | --- | --- |
-| `0` | Terminó, aunque la limpieza no aplique a la plataforma o haya emitido avisos. |
-| `2` | Subcomando u opción desconocidos. |
+| `0` | Terminó: limpió todo lo pedido, o la limpieza no aplica a la plataforma. La de Playwright siempre termina en `0`, aunque haya emitido avisos. |
+| `1` | La limpieza dejó algo sin limpiar: un worktree conservado por una protección o un borrado que falló. |
+| `2` | Subcomando, opción o argumentos inválidos. |
 
 ## Agregar una limpieza
 
@@ -106,6 +152,8 @@ Cada dominio vive en `src/<dominio>/` con su `index.js` (y `index.d.ts`), se exp
 - un modo `dryRun` que solo informe;
 - `appliesTo(platform)`, para que la CLI no haga nada donde no aplica;
 - manejo de errores que avise con contexto en lugar de romper.
+
+En `src/cli/commands.js`, el subcomando declara las opciones que acepta además de `--dry-run` (`flags`), si necesita rutas (`requiresPaths`) y cómo se usan (`argumentsUsage`). Su `run` devuelve el código de salida; si no devuelve nada, es `0`.
 
 ## Desarrollo
 
