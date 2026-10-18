@@ -1,0 +1,63 @@
+{
+  "name": "@astra-kit/cleaner",
+  "version": "0.1.0",
+  "description": "Limpiezas del entorno de desarrollo: procesos huérfanos de WebKit de Playwright en Windows, y más por dominio.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Guido Modarelli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/guidomodarelli/astra-cleaner.git"
+  },
+  "homepage": "https://github.com/guidomodarelli/astra-cleaner#readme",
+  "bugs": "https://github.com/guidomodarelli/astra-cleaner/issues",
+  "keywords": [
+    "playwright",
+    "webkit",
+    "windows",
+    "orphan-processes",
+    "cleanup",
+    "worktree"
+  ],
+  "bin": {
+    "cleaner": "./bin/cleaner.js"
+  },
+  "exports": {
+    "./playwright": {
+      "types": "./src/playwright/index.d.ts",
+      "default": "./src/playwright/index.js"
+    },
+    "./playwright/global-setup": {
+      "types": "./src/playwright/global-setup.d.ts",
+      "default": "./src/playwright/global-setup.js"
+    },
+    "./playwright/global-teardown": {
+      "types": "./src/playwright/global-teardown.d.ts",
+      "default": "./src/playwright/global-teardown.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "typecheck": "tsc -p tsconfig.json",
+    "pack:check": "npm pack --dry-run",
+    "ci": "npm run typecheck && npm test && npm run pack:check"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^5.9.3"
+  }
+}
