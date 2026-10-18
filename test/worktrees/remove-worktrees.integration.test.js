@@ -45,7 +45,9 @@ describe("removeWorktrees with real git", () => {
   let mainPath;
 
   before(async () => {
-    fixtureFolder = realpathSync(mkdtempSync(path.join(tmpdir(), "astra-cleaner-worktrees-")));
+    // The native real path expands short (8.3) names, such as the Windows runner's RUNNER~1, into the long path git
+    // and the cleanup report.
+    fixtureFolder = realpathSync.native(mkdtempSync(path.join(tmpdir(), "astra-cleaner-worktrees-")));
     mainPath = path.join(fixtureFolder, "app");
     mkdirSync(mainPath);
     await git(mainPath, ["init", "--initial-branch=main"]);
