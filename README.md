@@ -46,6 +46,8 @@ Reglas de seguridad:
 
 Consulta: una sola llamada a PowerShell, con la ventana oculta y un timeout de 30 segundos, filtra en WMI por nombre de ejecutable (el filtro se arma desde la misma lista de la constante `WEBKIT_EXECUTABLES`) y pide solo las propiedades necesarias. Si no hay procesos de WebKit termina ahí; si los hay, consulta únicamente los PIDs de sus padres. Los padres se leen después que los hijos, así que una corrida que arranca en paralelo no se confunde con un huérfano.
 
+Espera de terminación: en Windows `process.kill` llama a `TerminateProcess`, que puede volver antes de que el proceso termine si tiene E/S pendiente, y mientras tanto sigue bloqueando la carpeta. Por eso, después de cerrar, la limpieza consulta por lote (cada 250 ms, hasta 10 segundos) si sigue corriendo la misma instancia, identificada por PID y hora de inicio para no confundirla con un PID reutilizado. Los que terminan quedan en `terminatedProcessIds`; los que no terminan a tiempo, o cuyo cierre no se pudo confirmar, quedan en `stillRunningProcessIds` con un aviso de que pueden seguir bloqueando la carpeta hasta reiniciar Windows. El `--dry-run` no espera.
+
 No hay handler de `exit` ni de `SIGINT`: un handler de `exit` solo admite código síncrono, ninguno de los dos corre ante `TerminateProcess` (el caso que motiva este paquete) y los workers también cargan el config, así que sumaría una consulta por worker sin cubrir nada.
 
 ### En `playwright.config`
@@ -77,7 +79,7 @@ Fuera de Windows el subcomando informa que no aplica y termina con código 0.
 import { cleanOrphanWebKitProcesses, selectOrphanWebKitProcessIds } from "@astra-kit/cleaner/playwright";
 
 const result = await cleanOrphanWebKitProcesses({ dryRun: true });
-// { applies, orphanProcessIds, terminatedProcessIds, failedProcessIds }
+// { applies, orphanProcessIds, terminatedProcessIds, stillRunningProcessIds, failedProcessIds }
 ```
 
 `selectOrphanWebKitProcessIds(webKitProcesses, livingProcesses)` es la decisión pura: recibe los procesos y devuelve los PIDs a cerrar, sin tocar el sistema.

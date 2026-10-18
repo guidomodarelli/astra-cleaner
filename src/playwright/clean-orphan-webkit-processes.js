@@ -1,17 +1,21 @@
 /** @module playwright/clean-orphan-webkit-processes Finds and closes orphan Playwright WebKit processes on Windows. */
 import process from "node:process";
-import { ORPHAN_CLEANUP_PLATFORM, PLAYWRIGHT_LOG_PREFIX } from "./constants.js";
+import { ORPHAN_CLEANUP_PLATFORM, PLAYWRIGHT_LOG_PREFIX, TERMINATION_WAIT_TIMEOUT_MS } from "./constants.js";
 import { selectOrphanWebKitProcessIds } from "./select-orphan-webkit-process-ids.js";
+import { waitForProcessExit } from "./wait-for-process-exit.js";
 import { windowsProcessSystem } from "./windows-process-system.js";
 
 /** @typedef {import("./windows-process-system.js").ProcessSystem} ProcessSystem */
+/** @typedef {import("./wait-for-process-exit.js").Clock} Clock */
 
 /**
  * @typedef {object} CleanupResult
  * @property {boolean} applies - Whether the cleanup runs on this platform.
  * @property {number[]} orphanProcessIds - Orphan Playwright WebKit processes found.
- * @property {number[]} terminatedProcessIds - Orphans that were closed.
- * @property {number[]} failedProcessIds - Orphans that could not be closed.
+ * @property {number[]} terminatedProcessIds - Orphans closed and confirmed gone.
+ * @property {number[]} stillRunningProcessIds - Orphans asked to end that did not end within the wait, or whose end
+ * could not be confirmed; they may keep their folder locked until Windows restarts.
+ * @property {number[]} failedProcessIds - Orphans that could not be asked to end.
  */
 
 /**
@@ -22,6 +26,8 @@ import { windowsProcessSystem } from "./windows-process-system.js";
  * @property {boolean} [reportClean] - Also log when no orphan is found, for manual runs.
  * @property {(message: string) => void} [log] - Receives informational messages.
  * @property {(message: string) => void} [warn] - Receives failure messages.
+ * @property {Clock} [clock] - Time source for the wait after closing, replaceable for tests.
+ * @property {number} [terminationTimeoutMs] - Longest wait for closed processes to really end.
  */
 
 /**
@@ -42,7 +48,7 @@ export function describeError(error) {
  * @returns {CleanupResult} Empty result.
  */
 function createEmptyResult(applies) {
-  return { applies, orphanProcessIds: [], terminatedProcessIds: [], failedProcessIds: [] };
+  return { applies, orphanProcessIds: [], terminatedProcessIds: [], stillRunningProcessIds: [], failedProcessIds: [] };
 }
 
 /**
@@ -67,6 +73,8 @@ export async function cleanOrphanWebKitProcesses({
   reportClean = false,
   log = console.log,
   warn = console.warn,
+  clock,
+  terminationTimeoutMs = TERMINATION_WAIT_TIMEOUT_MS,
 } = {}) {
   if (!playwrightCleanupApplies(platform)) return createEmptyResult(false);
 
@@ -94,14 +102,38 @@ export async function cleanOrphanWebKitProcesses({
     return result;
   }
 
+  const startTimesById = new Map(
+    snapshot.webKitProcesses.map((webKitProcess) => [webKitProcess.processId, webKitProcess.startedAtMs]),
+  );
+  /** @type {import("./wait-for-process-exit.js").ProcessInstance[]} */
+  const closedProcesses = [];
   for (const processId of orphanProcessIds) {
     try {
       system.terminateProcess(processId);
-      result.terminatedProcessIds.push(processId);
+      closedProcesses.push({ processId, startedAtMs: startTimesById.get(processId) ?? null });
     } catch (error) {
       result.failedProcessIds.push(processId);
       warn(`${PLAYWRIGHT_LOG_PREFIX} terminateProcess failed for pid=${processId}: ${describeError(error)}`);
     }
+  }
+
+  if (closedProcesses.length > 0) {
+    const processExitWait = await waitForProcessExit({
+      closedProcesses,
+      readProcessStartTimes: (processIds) => system.readProcessStartTimes(processIds),
+      clock,
+      timeoutMs: terminationTimeoutMs,
+      onQueryError: (error) =>
+        warn(`${PLAYWRIGHT_LOG_PREFIX} readProcessStartTimes failed; could not confirm that closed processes ended: ${describeError(error)}`),
+    });
+    result.terminatedProcessIds = processExitWait.exitedProcessIds;
+    result.stillRunningProcessIds = processExitWait.stillRunningProcessIds;
+  }
+
+  if (result.stillRunningProcessIds.length > 0) {
+    warn(
+      `${PLAYWRIGHT_LOG_PREFIX} ${result.stillRunningProcessIds.length} orphan WebKit process(es) did not end within ${terminationTimeoutMs} ms after TerminateProcess (pid=${result.stillRunningProcessIds.join(", ")}); they may keep their folder locked until Windows restarts.`,
+    );
   }
 
   if (result.terminatedProcessIds.length > 0) {

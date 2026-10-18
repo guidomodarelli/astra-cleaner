@@ -8,6 +8,8 @@
 export {
   ORPHAN_CLEANUP_PLATFORM,
   PLAYWRIGHT_BROWSERS_FOLDER,
+  TERMINATION_POLL_INTERVAL_MS,
+  TERMINATION_WAIT_TIMEOUT_MS,
   WEBKIT_EXECUTABLES,
 } from "./constants.js";
 export {
@@ -15,5 +17,6 @@ export {
   isPlaywrightWebKitExecutable,
   selectOrphanWebKitProcessIds,
 } from "./select-orphan-webkit-process-ids.js";
-export { parseProcessSnapshot, windowsProcessSystem } from "./windows-process-system.js";
+export { parseProcessSnapshot, parseProcessStartTimes, windowsProcessSystem } from "./windows-process-system.js";
 export { cleanOrphanWebKitProcesses, describeError, playwrightCleanupApplies } from "./clean-orphan-webkit-processes.js";
+export { selectStillRunningProcessIds, systemClock, waitForProcessExit } from "./wait-for-process-exit.js";

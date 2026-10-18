@@ -22,7 +22,9 @@ export interface ProcessSnapshot {
 export interface ProcessSystem {
   /** Reads the running processes. */
   readProcessSnapshot(): Promise<ProcessSnapshot>;
-  /** Ends a process; throws when it cannot. */
+  /** Reads the start time of the given processes that still run, by id. */
+  readProcessStartTimes(processIds: number[]): Promise<Map<number, number | null>>;
+  /** Asks a process to end; throws when it cannot. The process may still be terminating when it returns. */
   terminateProcess(processId: number): void;
 }
 
@@ -32,8 +34,10 @@ export interface CleanupResult {
   applies: boolean;
   /** Orphan Playwright WebKit processes found. */
   orphanProcessIds: number[];
-  /** Orphans that were closed. */
+  /** Orphans closed and confirmed gone. */
   terminatedProcessIds: number[];
+  /** Orphans that did not end within the wait, or whose end could not be confirmed; they may keep their folder locked. */
+  stillRunningProcessIds: number[];
   /** Orphans that could not be closed. */
   failedProcessIds: number[];
 }
@@ -52,11 +56,37 @@ export interface CleanupOptions {
   log?: (message: string) => void;
   /** Receives failure messages. */
   warn?: (message: string) => void;
+  /** Time source for the wait after closing, replaceable for tests. */
+  clock?: Clock;
+  /** Longest wait for closed processes to really end. */
+  terminationTimeoutMs?: number;
+}
+
+/** Time source. */
+export interface Clock {
+  /** Current time in milliseconds. */
+  now(): number;
+  /** Resolves after `durationMs`. */
+  sleep(durationMs: number): Promise<void>;
+}
+
+/** Process identified by its id and start time, so a reused id is not mistaken for it. */
+export interface ProcessInstance {
+  processId: number;
+  startedAtMs: number | null;
+}
+
+/** Outcome of waiting for closed processes to end. */
+export interface ProcessExitWait {
+  exitedProcessIds: number[];
+  stillRunningProcessIds: number[];
 }
 
 export declare const ORPHAN_CLEANUP_PLATFORM: "win32";
 export declare const PLAYWRIGHT_BROWSERS_FOLDER: "ms-playwright";
 export declare const WEBKIT_EXECUTABLES: readonly string[];
+export declare const TERMINATION_WAIT_TIMEOUT_MS: number;
+export declare const TERMINATION_POLL_INTERVAL_MS: number;
 
 export declare function isPlaywrightWebKitExecutable(executablePath: string | null): boolean;
 export declare function isParentAlive(
@@ -68,6 +98,20 @@ export declare function selectOrphanWebKitProcessIds(
   livingProcesses: Map<number, number | null>,
 ): number[];
 export declare function parseProcessSnapshot(stdout: string): ProcessSnapshot;
+export declare function parseProcessStartTimes(rows: unknown): Map<number, number | null>;
+export declare const systemClock: Clock;
+export declare function selectStillRunningProcessIds(
+  closedProcesses: ProcessInstance[],
+  runningStartTimes: Map<number, number | null>,
+): number[];
+export declare function waitForProcessExit(options: {
+  closedProcesses: ProcessInstance[];
+  readProcessStartTimes: (processIds: number[]) => Promise<Map<number, number | null>>;
+  clock?: Clock;
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+  onQueryError?: (error: unknown) => void;
+}): Promise<ProcessExitWait>;
 export declare const windowsProcessSystem: ProcessSystem;
 export declare function describeError(error: unknown): string;
 export declare function playwrightCleanupApplies(platform: string): boolean;

@@ -20,7 +20,10 @@ import {
 /**
  * @typedef {object} ProcessSystem
  * @property {() => Promise<ProcessSnapshot>} readProcessSnapshot - Reads the running processes.
- * @property {(processId: number) => void} terminateProcess - Ends a process; throws when it cannot.
+ * @property {(processIds: number[]) => Promise<Map<number, number | null>>} readProcessStartTimes - Reads the start
+ * time of the given processes that still run, by id.
+ * @property {(processId: number) => void} terminateProcess - Asks a process to end; throws when it cannot. The process
+ * may still be terminating when it returns.
  */
 
 const execFileAsync = promisify(execFile);
@@ -45,6 +48,33 @@ const PROCESS_SNAPSHOT_SCRIPT = [
 ].join("; ");
 
 /**
+ * Builds the PowerShell command that prints, as JSON, the id and start time of the given processes that still run.
+ * @param {number[]} processIds - Processes to look up; integers only, so the WQL filter cannot be injected.
+ * @returns {string} PowerShell command.
+ */
+function buildStartTimesScript(processIds) {
+  const processFilter = processIds.map((processId) => `ProcessId=${processId}`).join(" OR ");
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    `@(Get-CimInstance Win32_Process -Filter "${processFilter}" -Property ProcessId,CreationDate | Select-Object @{ Name = 'processId'; Expression = { $_.ProcessId } },@{ Name = 'startedAtMs'; Expression = { if ($_.CreationDate) { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } else { $null } } }) | ConvertTo-Json -Compress -Depth 2`,
+  ].join("; ");
+}
+
+/**
+ * Runs a PowerShell command hidden and bounded by the snapshot timeout.
+ * @param {string} command - PowerShell command.
+ * @returns {Promise<string>} Its standard output.
+ */
+async function runPowerShell(command) {
+  const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-NonInteractive", "-Command", command], {
+    maxBuffer: PROCESS_SNAPSHOT_MAX_BUFFER_BYTES,
+    timeout: PROCESS_SNAPSHOT_TIMEOUT_MS,
+    windowsHide: true,
+  });
+  return stdout;
+}
+
+/**
  * Reads an integer field (process id or start time), keeping anything else as unknown.
  * @param {unknown} value - Raw field value.
  * @returns {number | null} The integer, or `null` when it is not one.
@@ -64,6 +94,22 @@ function toList(value) {
 }
 
 /**
+ * Reads the id and start time of process rows, dropping rows without an id.
+ * @param {unknown} rows - Rows printed by PowerShell: a list, a single object or nothing.
+ * @returns {Map<number, number | null>} Start time by id.
+ */
+export function parseProcessStartTimes(rows) {
+  /** @type {Map<number, number | null>} */
+  const startTimes = new Map();
+  for (const row of toList(rows)) {
+    const { processId, startedAtMs } = /** @type {Record<string, unknown>} */ (row ?? {});
+    const knownProcessId = toInteger(processId);
+    if (knownProcessId !== null) startTimes.set(knownProcessId, toInteger(startedAtMs));
+  }
+  return startTimes;
+}
+
+/**
  * Parses the JSON printed by {@link PROCESS_SNAPSHOT_SCRIPT}. Unknown ids, paths and times stay `null`, so the
  * decision keeps those processes.
  * @param {string} stdout - Output of the snapshot script.
@@ -73,13 +119,7 @@ function toList(value) {
 export function parseProcessSnapshot(stdout) {
   const output = stdout.trim();
   const snapshot = output ? JSON.parse(output) : {};
-  /** @type {Map<number, number | null>} */
-  const livingProcesses = new Map();
-  for (const row of toList(snapshot?.livingProcesses)) {
-    const { processId, startedAtMs } = /** @type {Record<string, unknown>} */ (row ?? {});
-    const livingProcessId = toInteger(processId);
-    if (livingProcessId !== null) livingProcesses.set(livingProcessId, toInteger(startedAtMs));
-  }
+  const livingProcesses = parseProcessStartTimes(snapshot?.livingProcesses);
   return {
     webKitProcesses: toList(snapshot?.webKitProcesses).map((row) => {
       const { processId, parentProcessId, executablePath, startedAtMs } = /** @type {Record<string, unknown>} */ (
@@ -99,12 +139,13 @@ export function parseProcessSnapshot(stdout) {
 /** @type {ProcessSystem} */
 export const windowsProcessSystem = {
   async readProcessSnapshot() {
-    const { stdout } = await execFileAsync(
-      "powershell",
-      ["-NoProfile", "-NonInteractive", "-Command", PROCESS_SNAPSHOT_SCRIPT],
-      { maxBuffer: PROCESS_SNAPSHOT_MAX_BUFFER_BYTES, timeout: PROCESS_SNAPSHOT_TIMEOUT_MS, windowsHide: true },
-    );
-    return parseProcessSnapshot(stdout);
+    return parseProcessSnapshot(await runPowerShell(PROCESS_SNAPSHOT_SCRIPT));
+  },
+  async readProcessStartTimes(processIds) {
+    const safeProcessIds = processIds.filter((processId) => Number.isInteger(processId));
+    if (safeProcessIds.length === 0) return new Map();
+    const output = (await runPowerShell(buildStartTimesScript(safeProcessIds))).trim();
+    return parseProcessStartTimes(output ? JSON.parse(output) : null);
   },
   terminateProcess(processId) {
     // On Windows `process.kill` calls TerminateProcess.

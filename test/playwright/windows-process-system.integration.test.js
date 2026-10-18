@@ -78,6 +78,7 @@ describe("windowsProcessSystem on Windows", { skip: !isWindows && "only Windows 
       const result = await cleanOrphanWebKitProcesses({
         system: {
           readProcessSnapshot: windowsProcessSystem.readProcessSnapshot,
+          readProcessStartTimes: windowsProcessSystem.readProcessStartTimes,
           // Real orphans of other runs on this machine are only recorded, never closed by the test.
           terminateProcess(processId) {
             if (processId === orphanProcessId) windowsProcessSystem.terminateProcess(processId);
