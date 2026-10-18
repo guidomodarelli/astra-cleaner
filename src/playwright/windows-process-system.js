@@ -42,7 +42,9 @@ const PROCESS_SNAPSHOT_SCRIPT = [
   "$ErrorActionPreference = 'Stop'",
   "$startedAtMs = @{ Name = 'startedAtMs'; Expression = { if ($_.CreationDate) { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } else { $null } } }",
   `$webKitProcesses = @(Get-CimInstance Win32_Process -Filter "${WEBKIT_NAME_FILTER}" -Property ProcessId,ParentProcessId,ExecutablePath,CreationDate | Select-Object @{ Name = 'processId'; Expression = { $_.ProcessId } },@{ Name = 'parentProcessId'; Expression = { $_.ParentProcessId } },@{ Name = 'executablePath'; Expression = { $_.ExecutablePath } },$startedAtMs)`,
-  "$parentFilter = @($webKitProcesses | ForEach-Object { 'ProcessId=' + $_.parentProcessId } | Sort-Object -Unique) -join ' OR '",
+  // A row without a parent id is kept for the decision (which leaves it running) but stays out of the WQL filter: an
+  // empty `ProcessId=` clause would fail the query and discard the whole snapshot.
+  "$parentFilter = @($webKitProcesses | Where-Object { $null -ne $_.parentProcessId } | ForEach-Object { 'ProcessId=' + $_.parentProcessId } | Sort-Object -Unique) -join ' OR '",
   "$livingProcesses = if ($parentFilter) { @(Get-CimInstance Win32_Process -Filter $parentFilter -Property ProcessId,CreationDate | Select-Object @{ Name = 'processId'; Expression = { $_.ProcessId } },$startedAtMs) } else { @() }",
   "ConvertTo-Json -Compress -Depth 3 -InputObject @{ webKitProcesses = $webKitProcesses; livingProcesses = $livingProcesses }",
 ].join("; ");
