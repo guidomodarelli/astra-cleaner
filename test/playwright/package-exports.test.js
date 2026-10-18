@@ -22,3 +22,10 @@ describe("package exports", () => {
     assert.equal(typeof playwrightCleanup.selectOrphanWebKitProcessIds, "function");
   });
 });
+
+describe("0.1 compatibility", () => {
+  it("keeps isPlaywrightExecutable as an alias of isPlaywrightWebKitExecutable", async () => {
+    const playwrightCleanup = await import("@astra-kit/cleaner/playwright");
+    assert.equal(playwrightCleanup.isPlaywrightExecutable, playwrightCleanup.isPlaywrightWebKitExecutable);
+  });
+});

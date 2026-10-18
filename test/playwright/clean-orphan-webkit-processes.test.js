@@ -240,6 +240,9 @@ describe("cleanOrphanWebKitProcesses", () => {
     assert.deepEqual(result.terminatedProcessIds, []);
     assert.deepEqual(result.stillRunningProcessIds, [100]);
     assert.match(output.warnings.join("\n"), /could not confirm that closed processes ended.*powershell timed out/u);
+    assert.match(output.warnings.join("\n"), /could not confirm that 1 closed orphan WebKit process\(es\) ended \(pid=100\)/u);
+    // No timeout elapsed, so the run must not claim one.
+    assert.doesNotMatch(output.warnings.join("\n"), /did not end within/u);
   });
 
   it("only reports the orphans in a dry run", async () => {

@@ -150,6 +150,7 @@ export async function cleanOrphanWebKitProcesses({
 
   /** @type {number[]} */
   let exitedProcessIds = [];
+  let exitUnconfirmed = false;
   if (closedProcesses.length > 0) {
     const processExitWait = await waitForProcessExit({
       closedProcesses,
@@ -161,12 +162,17 @@ export async function cleanOrphanWebKitProcesses({
     });
     result.stillRunningProcessIds = processExitWait.stillRunningProcessIds;
     exitedProcessIds = processExitWait.exitedProcessIds;
+    exitUnconfirmed = processExitWait.exitUnconfirmed;
   }
   // Orphans that ended on their own, or whose id now names another process, count as terminated without a close.
   const terminatedProcessIdSet = new Set([...identityCheck.goneProcessIds, ...exitedProcessIds]);
   result.terminatedProcessIds = orphanProcessIds.filter((processId) => terminatedProcessIdSet.has(processId));
 
-  if (result.stillRunningProcessIds.length > 0) {
+  if (exitUnconfirmed) {
+    warn(
+      `${PLAYWRIGHT_LOG_PREFIX} could not confirm that ${result.stillRunningProcessIds.length} closed orphan WebKit process(es) ended (pid=${result.stillRunningProcessIds.join(", ")}); if one is still running it may keep its folder locked.`,
+    );
+  } else if (result.stillRunningProcessIds.length > 0) {
     warn(
       `${PLAYWRIGHT_LOG_PREFIX} ${result.stillRunningProcessIds.length} orphan WebKit process(es) did not end within ${terminationTimeoutMs} ms after TerminateProcess (pid=${result.stillRunningProcessIds.join(", ")}); they may keep their folder locked until Windows restarts.`,
     );

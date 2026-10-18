@@ -56,7 +56,7 @@ describe("waitForProcessExit", () => {
       readProcessStartTimes: async () => new Map(),
       clock,
     });
-    assert.deepEqual(result, { exitedProcessIds: [100], stillRunningProcessIds: [] });
+    assert.deepEqual(result, { exitedProcessIds: [100], stillRunningProcessIds: [], exitUnconfirmed: false });
     assert.deepEqual(clock.sleeps, []);
   });
 
@@ -77,7 +77,7 @@ describe("waitForProcessExit", () => {
       pollIntervalMs: 100,
     });
     assert.deepEqual(queries, [[100, 101], [100, 101], [101]]);
-    assert.deepEqual(result, { exitedProcessIds: [100, 101], stillRunningProcessIds: [] });
+    assert.deepEqual(result, { exitedProcessIds: [100, 101], stillRunningProcessIds: [], exitUnconfirmed: false });
   });
 
   it("stops at the timeout and reports the processes still running", async () => {
@@ -89,7 +89,7 @@ describe("waitForProcessExit", () => {
       timeoutMs: 1_000,
       pollIntervalMs: 300,
     });
-    assert.deepEqual(result, { exitedProcessIds: [], stillRunningProcessIds: [100] });
+    assert.deepEqual(result, { exitedProcessIds: [], stillRunningProcessIds: [100], exitUnconfirmed: false });
     assert.deepEqual(clock.sleeps, [300, 300, 300, 100]);
   });
 
@@ -104,7 +104,7 @@ describe("waitForProcessExit", () => {
       clock: createClock(),
       onQueryError: (error) => queryErrors.push(error),
     });
-    assert.deepEqual(result, { exitedProcessIds: [], stillRunningProcessIds: [100] });
+    assert.deepEqual(result, { exitedProcessIds: [], stillRunningProcessIds: [100], exitUnconfirmed: true });
     assert.equal(queryErrors.length, 1);
   });
 });

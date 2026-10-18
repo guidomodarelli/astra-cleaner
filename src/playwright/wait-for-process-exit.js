@@ -32,6 +32,8 @@ import { checkProcessIdentity } from "./process-identity.js";
  * @property {number[]} exitedProcessIds - Processes confirmed gone.
  * @property {number[]} stillRunningProcessIds - Processes still running at the deadline, or whose exit could not be
  * confirmed.
+ * @property {boolean} exitUnconfirmed - Whether a query failed, so the processes in `stillRunningProcessIds` may
+ * have ended: their state is unknown rather than timed out.
  */
 
 /** Real time, for production runs. */
@@ -94,6 +96,7 @@ export async function waitForProcessExit({
 }) {
   const deadlineMs = clock.now() + timeoutMs;
   let pendingProcesses = closedProcesses;
+  let exitUnconfirmed = false;
 
   while (pendingProcesses.length > 0) {
     const remainingMs = deadlineMs - clock.now();
@@ -106,6 +109,7 @@ export async function waitForProcessExit({
       );
     } catch (error) {
       onQueryError(error);
+      exitUnconfirmed = true;
       break;
     }
     const stillRunningProcessIds = new Set(selectStillRunningProcessIds(pendingProcesses, runningStartTimes));
@@ -120,5 +124,6 @@ export async function waitForProcessExit({
       .map((closedProcess) => closedProcess.processId)
       .filter((processId) => !stillRunningProcessIds.has(processId)),
     stillRunningProcessIds: [...stillRunningProcessIds],
+    exitUnconfirmed: exitUnconfirmed && stillRunningProcessIds.size > 0,
   };
 }

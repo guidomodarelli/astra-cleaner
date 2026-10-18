@@ -15,6 +15,7 @@ export {
 } from "./constants.js";
 export {
   isParentAlive,
+  isPlaywrightExecutable,
   isPlaywrightWebKitExecutable,
   selectOrphanWebKitProcessIds,
 } from "./select-orphan-webkit-process-ids.js";

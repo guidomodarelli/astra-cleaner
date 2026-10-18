@@ -34,6 +34,13 @@ export function isPlaywrightWebKitExecutable(executablePath) {
 }
 
 /**
+ * Former name of {@link isPlaywrightWebKitExecutable}, kept so 0.1 callers keep loading. Since 0.2 it also requires the
+ * file name to be one of WebKit's executables.
+ * @deprecated Use `isPlaywrightWebKitExecutable`.
+ */
+export const isPlaywrightExecutable = isPlaywrightWebKitExecutable;
+
+/**
  * Tells whether a process can be judged: its id, parent id and executable are known, and the executable is a
  * Playwright WebKit one. Anything unknown keeps the process out, so the decision errs on the side of closing nothing.
  * @param {WebKitProcess} webKitProcess - Process read from Windows.

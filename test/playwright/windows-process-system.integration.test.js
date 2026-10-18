@@ -72,18 +72,23 @@ describe("windowsProcessSystem on Windows", { skip: !isWindows && "only Windows 
     const orphanProcessId = Number(launcherOutput.trim());
     assert.equal(Number.isInteger(orphanProcessId), true, "the launcher printed the orphan pid");
 
-    /** @type {number[]} */
-    const otherOrphanProcessIds = [];
+    const testProcessIds = new Set([orphanProcessId, fakeWebKitHelper.pid]);
     try {
       const result = await cleanOrphanWebKitProcesses({
         system: {
-          readProcessSnapshot: windowsProcessSystem.readProcessSnapshot,
-          readProcessStartTimes: windowsProcessSystem.readProcessStartTimes,
-          // Real orphans of other runs on this machine are only recorded, never closed by the test.
-          terminateProcess(processId) {
-            if (processId === orphanProcessId) windowsProcessSystem.terminateProcess(processId);
-            else otherOrphanProcessIds.push(processId);
+          // Only the processes this test started enter the cleanup, so real orphans of other runs on this machine are
+          // never closed nor waited for.
+          async readProcessSnapshot() {
+            const snapshot = await windowsProcessSystem.readProcessSnapshot();
+            return {
+              ...snapshot,
+              webKitProcesses: snapshot.webKitProcesses.filter((webKitProcess) =>
+                testProcessIds.has(webKitProcess.processId ?? undefined),
+              ),
+            };
           },
+          readProcessStartTimes: windowsProcessSystem.readProcessStartTimes,
+          terminateProcess: windowsProcessSystem.terminateProcess,
         },
         log: () => {},
         warn: assert.fail,

@@ -87,6 +87,8 @@ export interface ProcessIdentityCheck {
 export interface ProcessExitWait {
   exitedProcessIds: number[];
   stillRunningProcessIds: number[];
+  /** Whether a query failed, so the processes still listed may have ended. */
+  exitUnconfirmed: boolean;
 }
 
 export declare const ORPHAN_CLEANUP_PLATFORM: "win32";
@@ -102,6 +104,8 @@ export declare function checkProcessIdentity(
 export declare function computeQueryTimeoutMs(remainingMs: number, queryTimeoutMs?: number): number;
 
 export declare function isPlaywrightWebKitExecutable(executablePath: string | null): boolean;
+/** @deprecated Use `isPlaywrightWebKitExecutable`; kept as an alias for 0.1 callers. */
+export declare const isPlaywrightExecutable: typeof isPlaywrightWebKitExecutable;
 export declare function isParentAlive(
   webKitProcess: { parentProcessId: number; startedAtMs: number | null },
   livingProcesses: Map<number, number | null>,
