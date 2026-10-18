@@ -55,12 +55,16 @@
     "test": "node --test \"test/**/*.test.js\"",
     "typecheck": "tsc -p tsconfig.json",
     "pack:check": "npm pack --dry-run",
-    "ci": "npm run typecheck && npm test && npm run pack:check"
+    "ci": "npm run typecheck && npm test && npm run pack:check",
+    "create-version": "astra-rp create-version",
+    "cv": "astra-rp create-version",
+    "prepublishOnly": "astra-rp guard-publish"
   },
   "publishConfig": {
     "access": "public"
   },
   "devDependencies": {
+    "@astra-kit/rp": "^1.0.0",
     "@types/node": "^24.19.2",
     "typescript": "^5.9.3"
   }

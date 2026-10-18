@@ -164,10 +164,12 @@ npm run ci   # typecheck, tests y npm pack --dry-run
 
 ## Publicación
 
-Se publica desde GitHub Actions con [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC), sin tokens de npm:
+Se publica con [`@astra-kit/rp`](https://github.com/guidomodarelli/astra-rp) desde `main`, y el workflow `release.yml` de GitHub Actions publica con [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC), sin tokens de npm:
 
-1. Actualizar la versión en `package.json` y mover las entradas de `[Unreleased]` en `CHANGELOG.md` a la nueva versión.
-2. Commitear en `main`, crear el tag `vX.Y.Z` y pushearlo: el workflow `release.yml` verifica que el tag coincida con la versión y esté en `main`, corre `npm run ci` y publica con procedencia.
+1. Escribir las entradas del release en `## [Unreleased]` de `CHANGELOG.md`, sin versión ni fecha. Si faltan, `changelogDraft` las redacta con Claude Code o Codex.
+2. Correr `npm run create-version` (alias `npm run cv`; por ejemplo `npm run cv -- --minor`). El comando corre `npm run ci`, crea el commit `X.Y.Z` (que cierra `[Unreleased]` como `## [X.Y.Z] - AAAA-MM-DD`) y el tag `vX.Y.Z`, los pushea y despacha `release.yml`, que verifica el tag y publica con procedencia.
+
+La configuración vive en `astra-rp.config.js`. `npm publish` directo queda bloqueado para pnpm, yarn y bun por `astra-rp guard-publish`.
 
 ## Licencia
 
