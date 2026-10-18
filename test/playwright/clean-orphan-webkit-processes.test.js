@@ -11,43 +11,63 @@ const ORPHAN_PROCESS = {
 };
 
 /**
- * Builds a fake process system that records the processes it ends. Ended processes disappear at once, except the
- * stuck ones, which keep running with their start time as a process stuck while terminating does.
+ * Builds a fake process system that records the processes it ends. The WebKit processes of the snapshot run with
+ * their snapshot start time until they are ended; ended processes disappear at once, except the stuck ones, which
+ * keep running as a process stuck while terminating does.
  * @param {object} [options]
+ * @param {import("../../src/playwright/select-orphan-webkit-process-ids.js").WebKitProcess[]} [options.webKitProcesses]
  * @param {() => Promise<import("../../src/playwright/windows-process-system.js").ProcessSnapshot>} [options.readProcessSnapshot]
  * @param {(processId: number) => void} [options.terminateProcess]
- * @param {Map<number, number>} [options.stuckProcesses] - Start time of the processes that never end, by id.
+ * @param {Set<number>} [options.stuckProcessIds] - Processes that never end.
+ * @param {Map<number, number | null | undefined>} [options.startTimesAfterSnapshot] - Start time each process has once
+ * the snapshot was read, by id: another time simulates a reused id, `undefined` a process that ended on its own; ids
+ * missing from the map keep their snapshot time.
  * @param {(processIds: number[]) => Promise<Map<number, number | null>>} [options.readProcessStartTimes]
  */
 function createProcessSystem({
-  readProcessSnapshot = async () => ({ webKitProcesses: [ORPHAN_PROCESS], livingProcesses: new Map() }),
+  webKitProcesses = [ORPHAN_PROCESS],
+  readProcessSnapshot = async () => ({ webKitProcesses, livingProcesses: new Map() }),
   terminateProcess = () => {},
-  stuckProcesses = new Map(),
+  stuckProcessIds = new Set(),
+  startTimesAfterSnapshot = new Map(),
   readProcessStartTimes,
 } = {}) {
   /** @type {number[]} */
   const terminatedProcessIds = [];
   /** @type {number[][]} */
   const startTimeQueries = [];
+  /** @type {number[]} */
+  const queryTimeoutsMs = [];
   return {
     terminatedProcessIds,
     startTimeQueries,
+    queryTimeoutsMs,
     readProcessSnapshot,
     /** @param {number} processId */
     terminateProcess(processId) {
       terminateProcess(processId);
       terminatedProcessIds.push(processId);
     },
-    /** @param {number[]} processIds */
-    async readProcessStartTimes(processIds) {
+    /**
+     * @param {number[]} processIds
+     * @param {{ timeoutMs?: number }} [queryOptions]
+     */
+    async readProcessStartTimes(processIds, queryOptions) {
       startTimeQueries.push(processIds);
+      if (queryOptions?.timeoutMs !== undefined) queryTimeoutsMs.push(queryOptions.timeoutMs);
       if (readProcessStartTimes) return readProcessStartTimes(processIds);
-      return new Map(
-        processIds.flatMap((processId) => {
-          const stuckStartedAtMs = stuckProcesses.get(processId);
-          return stuckStartedAtMs === undefined ? [] : [[processId, stuckStartedAtMs]];
-        }),
-      );
+      /** @type {Map<number, number | null>} */
+      const runningStartTimes = new Map();
+      for (const webKitProcess of webKitProcesses) {
+        const { processId } = webKitProcess;
+        if (processId === null || !processIds.includes(processId)) continue;
+        if (terminatedProcessIds.includes(processId) && !stuckProcessIds.has(processId)) continue;
+        const startedAtMs = startTimesAfterSnapshot.has(processId)
+          ? startTimesAfterSnapshot.get(processId)
+          : webKitProcess.startedAtMs;
+        if (startedAtMs !== undefined) runningStartTimes.set(processId, startedAtMs);
+      }
+      return runningStartTimes;
     },
   };
 }
@@ -104,7 +124,8 @@ describe("cleanOrphanWebKitProcesses", () => {
   });
 
   it("waits until a closed process really ends before reporting it closed", async () => {
-    let remainingRunningQueries = 2;
+    // The first query revalidates the orphan before closing; the next two still see it while it terminates.
+    let remainingRunningQueries = 3;
     const system = createProcessSystem({
       readProcessStartTimes: async () => {
         if (remainingRunningQueries === 0) return new Map();
@@ -115,7 +136,8 @@ describe("cleanOrphanWebKitProcesses", () => {
     const clock = createClock();
     const output = createOutput();
     const result = await cleanOrphanWebKitProcesses({ platform: WINDOWS_PLATFORM, system, clock, ...output });
-    assert.deepEqual(system.startTimeQueries, [[100], [100], [100]]);
+    assert.deepEqual(system.terminatedProcessIds, [100]);
+    assert.deepEqual(system.startTimeQueries, [[100], [100], [100], [100]]);
     assert.equal(clock.sleeps.length, 2);
     assert.deepEqual(result.terminatedProcessIds, [100]);
     assert.deepEqual(result.stillRunningProcessIds, []);
@@ -125,8 +147,8 @@ describe("cleanOrphanWebKitProcesses", () => {
   it("reports processes stuck while terminating apart and keeps the run going", async () => {
     const secondOrphan = { ...ORPHAN_PROCESS, processId: 101 };
     const system = createProcessSystem({
-      readProcessSnapshot: async () => ({ webKitProcesses: [ORPHAN_PROCESS, secondOrphan], livingProcesses: new Map() }),
-      stuckProcesses: new Map([[101, secondOrphan.startedAtMs]]),
+      webKitProcesses: [ORPHAN_PROCESS, secondOrphan],
+      stuckProcessIds: new Set([101]),
     });
     const clock = createClock();
     const output = createOutput();
@@ -144,7 +166,52 @@ describe("cleanOrphanWebKitProcesses", () => {
     assert.match(output.logs.join("\n"), /Closed 1 orphan Playwright WebKit process\(es\): 100/u);
   });
 
-  it("warns and leaves the closes unconfirmed when the exit check fails", async () => {
+  it("cuts each liveness query to the time left and stops querying at the deadline", async () => {
+    const system = createProcessSystem({ stuckProcessIds: new Set([100]) });
+    const clock = createClock();
+    const result = await cleanOrphanWebKitProcesses({
+      platform: WINDOWS_PLATFORM,
+      system,
+      clock,
+      terminationTimeoutMs: 600,
+      log: () => {},
+      warn: () => {},
+    });
+    // The revalidation query uses the usual timeout; the wait queries use what is left of the 600 ms, never below 250.
+    assert.deepEqual(system.queryTimeoutsMs, [600, 350, 250]);
+    assert.equal(clock.now(), 600);
+    assert.deepEqual(result.stillRunningProcessIds, [100]);
+  });
+
+  it("closes only orphans that are still the same instance right before closing", async () => {
+    const reusedOrphan = { ...ORPHAN_PROCESS, processId: 101 };
+    const goneOrphan = { ...ORPHAN_PROCESS, processId: 102 };
+    const system = createProcessSystem({
+      webKitProcesses: [ORPHAN_PROCESS, reusedOrphan, goneOrphan],
+      // Process 101 now names a newer process; process 102 ended between the snapshot and the close.
+      startTimesAfterSnapshot: new Map([
+        [101, ORPHAN_PROCESS.startedAtMs + 1],
+        [102, undefined],
+      ]),
+    });
+    const output = createOutput();
+    const result = await cleanOrphanWebKitProcesses({ platform: WINDOWS_PLATFORM, system, clock: createClock(), ...output });
+    assert.deepEqual(system.terminatedProcessIds, [100]);
+    assert.deepEqual(result.terminatedProcessIds, [100, 101, 102]);
+    assert.deepEqual(result.failedProcessIds, []);
+    assert.deepEqual(output.warnings, []);
+  });
+
+  it("leaves running an orphan whose identity cannot be checked before closing", async () => {
+    const system = createProcessSystem({ startTimesAfterSnapshot: new Map([[100, null]]) });
+    const output = createOutput();
+    const result = await cleanOrphanWebKitProcesses({ platform: WINDOWS_PLATFORM, system, clock: createClock(), ...output });
+    assert.deepEqual(system.terminatedProcessIds, []);
+    assert.deepEqual(result.failedProcessIds, [100]);
+    assert.match(output.warnings.join("\n"), /could not verify the identity of pid=100/u);
+  });
+
+  it("closes nothing and warns when the revalidation query fails", async () => {
     const system = createProcessSystem({
       readProcessStartTimes: async () => {
         throw new Error("powershell timed out");
@@ -152,9 +219,27 @@ describe("cleanOrphanWebKitProcesses", () => {
     });
     const output = createOutput();
     const result = await cleanOrphanWebKitProcesses({ platform: WINDOWS_PLATFORM, system, clock: createClock(), ...output });
+    assert.deepEqual(system.terminatedProcessIds, []);
+    assert.deepEqual(result.failedProcessIds, [100]);
+    assert.deepEqual(result.terminatedProcessIds, []);
+    assert.match(output.warnings.join("\n"), /failed before closing; no orphan was closed \(pid=100\).*powershell timed out/u);
+  });
+
+  it("warns and leaves the closes unconfirmed when the exit check fails", async () => {
+    let queryCount = 0;
+    const system = createProcessSystem({
+      readProcessStartTimes: async () => {
+        queryCount += 1;
+        if (queryCount === 1) return new Map([[100, ORPHAN_PROCESS.startedAtMs]]);
+        throw new Error("powershell timed out");
+      },
+    });
+    const output = createOutput();
+    const result = await cleanOrphanWebKitProcesses({ platform: WINDOWS_PLATFORM, system, clock: createClock(), ...output });
+    assert.deepEqual(system.terminatedProcessIds, [100]);
     assert.deepEqual(result.terminatedProcessIds, []);
     assert.deepEqual(result.stillRunningProcessIds, [100]);
-    assert.match(output.warnings.join("\n"), /readProcessStartTimes failed.*powershell timed out/u);
+    assert.match(output.warnings.join("\n"), /could not confirm that closed processes ended.*powershell timed out/u);
   });
 
   it("only reports the orphans in a dry run", async () => {
@@ -200,7 +285,7 @@ describe("cleanOrphanWebKitProcesses", () => {
   it("warns with the process id and keeps going when a process cannot be closed", async () => {
     const secondOrphan = { ...ORPHAN_PROCESS, processId: 101 };
     const system = createProcessSystem({
-      readProcessSnapshot: async () => ({ webKitProcesses: [ORPHAN_PROCESS, secondOrphan], livingProcesses: new Map() }),
+      webKitProcesses: [ORPHAN_PROCESS, secondOrphan],
       terminateProcess: (processId) => {
         if (processId === 100) throw new Error("EPERM");
       },

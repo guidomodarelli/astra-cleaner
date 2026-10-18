@@ -20,8 +20,8 @@ import {
 /**
  * @typedef {object} ProcessSystem
  * @property {() => Promise<ProcessSnapshot>} readProcessSnapshot - Reads the running processes.
- * @property {(processIds: number[]) => Promise<Map<number, number | null>>} readProcessStartTimes - Reads the start
- * time of the given processes that still run, by id.
+ * @property {(processIds: number[], queryOptions?: { timeoutMs?: number }) => Promise<Map<number, number | null>>} readProcessStartTimes
+ * - Reads the start time of the given processes that still run, by id, within an optional query timeout.
  * @property {(processId: number) => void} terminateProcess - Asks a process to end; throws when it cannot. The process
  * may still be terminating when it returns.
  */
@@ -61,14 +61,15 @@ function buildStartTimesScript(processIds) {
 }
 
 /**
- * Runs a PowerShell command hidden and bounded by the snapshot timeout.
+ * Runs a PowerShell command hidden and bounded by a timeout.
  * @param {string} command - PowerShell command.
+ * @param {number} [timeoutMs] - Longest time the command may take.
  * @returns {Promise<string>} Its standard output.
  */
-async function runPowerShell(command) {
+async function runPowerShell(command, timeoutMs = PROCESS_SNAPSHOT_TIMEOUT_MS) {
   const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-NonInteractive", "-Command", command], {
     maxBuffer: PROCESS_SNAPSHOT_MAX_BUFFER_BYTES,
-    timeout: PROCESS_SNAPSHOT_TIMEOUT_MS,
+    timeout: timeoutMs,
     windowsHide: true,
   });
   return stdout;
@@ -141,10 +142,10 @@ export const windowsProcessSystem = {
   async readProcessSnapshot() {
     return parseProcessSnapshot(await runPowerShell(PROCESS_SNAPSHOT_SCRIPT));
   },
-  async readProcessStartTimes(processIds) {
+  async readProcessStartTimes(processIds, { timeoutMs = PROCESS_SNAPSHOT_TIMEOUT_MS } = {}) {
     const safeProcessIds = processIds.filter((processId) => Number.isInteger(processId));
     if (safeProcessIds.length === 0) return new Map();
-    const output = (await runPowerShell(buildStartTimesScript(safeProcessIds))).trim();
+    const output = (await runPowerShell(buildStartTimesScript(safeProcessIds), timeoutMs)).trim();
     return parseProcessStartTimes(output ? JSON.parse(output) : null);
   },
   terminateProcess(processId) {

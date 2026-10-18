@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { selectStillRunningProcessIds, waitForProcessExit } from "../../src/playwright/wait-for-process-exit.js";
+import {
+  computeQueryTimeoutMs,
+  selectStillRunningProcessIds,
+  waitForProcessExit,
+} from "../../src/playwright/wait-for-process-exit.js";
 
 const STARTED_AT_MS = 5_000;
 
@@ -102,5 +106,13 @@ describe("waitForProcessExit", () => {
     });
     assert.deepEqual(result, { exitedProcessIds: [], stillRunningProcessIds: [100] });
     assert.equal(queryErrors.length, 1);
+  });
+});
+
+describe("computeQueryTimeoutMs", () => {
+  it("uses the time left, capped by the usual timeout and never below the floor", () => {
+    assert.equal(computeQueryTimeoutMs(5_000, 30_000), 5_000);
+    assert.equal(computeQueryTimeoutMs(60_000, 30_000), 30_000);
+    assert.equal(computeQueryTimeoutMs(100, 30_000), 250);
   });
 });

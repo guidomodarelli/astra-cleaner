@@ -2,6 +2,7 @@
 import process from "node:process";
 import { ORPHAN_CLEANUP_PLATFORM, PLAYWRIGHT_LOG_PREFIX, TERMINATION_WAIT_TIMEOUT_MS } from "./constants.js";
 import { selectOrphanWebKitProcessIds } from "./select-orphan-webkit-process-ids.js";
+import { checkProcessIdentity } from "./process-identity.js";
 import { waitForProcessExit } from "./wait-for-process-exit.js";
 import { windowsProcessSystem } from "./windows-process-system.js";
 
@@ -15,7 +16,8 @@ import { windowsProcessSystem } from "./windows-process-system.js";
  * @property {number[]} terminatedProcessIds - Orphans closed and confirmed gone.
  * @property {number[]} stillRunningProcessIds - Orphans asked to end that did not end within the wait, or whose end
  * could not be confirmed; they may keep their folder locked until Windows restarts.
- * @property {number[]} failedProcessIds - Orphans that could not be asked to end.
+ * @property {number[]} failedProcessIds - Orphans left running because they could not be asked to end, or because
+ * their identity could not be checked right before closing.
  */
 
 /**
@@ -105,9 +107,38 @@ export async function cleanOrphanWebKitProcesses({
   const startTimesById = new Map(
     snapshot.webKitProcesses.map((webKitProcess) => [webKitProcess.processId, webKitProcess.startedAtMs]),
   );
-  /** @type {import("./wait-for-process-exit.js").ProcessInstance[]} */
+  /** @type {import("./process-identity.js").ProcessInstance[]} */
+  const orphanInstances = orphanProcessIds.map((processId) => ({
+    processId,
+    startedAtMs: startTimesById.get(processId) ?? null,
+  }));
+
+  // Windows may reuse an orphan's id between the snapshot and the close, and `process.kill` would then end an
+  // unrelated process. Checking each id against its snapshot start time right before closing narrows that race
+  // window; it cannot remove it, since the id can still be reused between this query and the close.
+  let identityCheck;
+  try {
+    identityCheck = checkProcessIdentity(orphanInstances, await system.readProcessStartTimes(orphanProcessIds));
+  } catch (error) {
+    result.failedProcessIds.push(...orphanProcessIds);
+    warn(
+      `${PLAYWRIGHT_LOG_PREFIX} readProcessStartTimes failed before closing; no orphan was closed (pid=${orphanProcessIds.join(", ")}): ${describeError(error)}`,
+    );
+    return result;
+  }
+  if (identityCheck.unverifiableProcessIds.length > 0) {
+    result.failedProcessIds.push(...identityCheck.unverifiableProcessIds);
+    warn(
+      `${PLAYWRIGHT_LOG_PREFIX} could not verify the identity of pid=${identityCheck.unverifiableProcessIds.join(", ")} before closing; left running.`,
+    );
+  }
+  const sameInstanceProcessIds = new Set(identityCheck.sameInstanceProcessIds);
+
+  /** @type {import("./process-identity.js").ProcessInstance[]} */
   const closedProcesses = [];
-  for (const processId of orphanProcessIds) {
+  for (const { processId } of orphanInstances.filter((orphanInstance) =>
+    sameInstanceProcessIds.has(orphanInstance.processId),
+  )) {
     try {
       system.terminateProcess(processId);
       closedProcesses.push({ processId, startedAtMs: startTimesById.get(processId) ?? null });
@@ -117,18 +148,23 @@ export async function cleanOrphanWebKitProcesses({
     }
   }
 
+  /** @type {number[]} */
+  let exitedProcessIds = [];
   if (closedProcesses.length > 0) {
     const processExitWait = await waitForProcessExit({
       closedProcesses,
-      readProcessStartTimes: (processIds) => system.readProcessStartTimes(processIds),
+      readProcessStartTimes: (processIds, queryOptions) => system.readProcessStartTimes(processIds, queryOptions),
       clock,
       timeoutMs: terminationTimeoutMs,
       onQueryError: (error) =>
         warn(`${PLAYWRIGHT_LOG_PREFIX} readProcessStartTimes failed; could not confirm that closed processes ended: ${describeError(error)}`),
     });
-    result.terminatedProcessIds = processExitWait.exitedProcessIds;
     result.stillRunningProcessIds = processExitWait.stillRunningProcessIds;
+    exitedProcessIds = processExitWait.exitedProcessIds;
   }
+  // Orphans that ended on their own, or whose id now names another process, count as terminated without a close.
+  const terminatedProcessIdSet = new Set([...identityCheck.goneProcessIds, ...exitedProcessIds]);
+  result.terminatedProcessIds = orphanProcessIds.filter((processId) => terminatedProcessIdSet.has(processId));
 
   if (result.stillRunningProcessIds.length > 0) {
     warn(

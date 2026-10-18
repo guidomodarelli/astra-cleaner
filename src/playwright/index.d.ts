@@ -23,7 +23,7 @@ export interface ProcessSystem {
   /** Reads the running processes. */
   readProcessSnapshot(): Promise<ProcessSnapshot>;
   /** Reads the start time of the given processes that still run, by id. */
-  readProcessStartTimes(processIds: number[]): Promise<Map<number, number | null>>;
+  readProcessStartTimes(processIds: number[], queryOptions?: { timeoutMs?: number }): Promise<Map<number, number | null>>;
   /** Asks a process to end; throws when it cannot. The process may still be terminating when it returns. */
   terminateProcess(processId: number): void;
 }
@@ -38,7 +38,7 @@ export interface CleanupResult {
   terminatedProcessIds: number[];
   /** Orphans that did not end within the wait, or whose end could not be confirmed; they may keep their folder locked. */
   stillRunningProcessIds: number[];
-  /** Orphans that could not be closed. */
+  /** Orphans left running: they could not be asked to end, or their identity could not be checked before closing. */
   failedProcessIds: number[];
 }
 
@@ -76,6 +76,13 @@ export interface ProcessInstance {
   startedAtMs: number | null;
 }
 
+/** Ids grouped by whether they still name the same process instance. */
+export interface ProcessIdentityCheck {
+  sameInstanceProcessIds: number[];
+  goneProcessIds: number[];
+  unverifiableProcessIds: number[];
+}
+
 /** Outcome of waiting for closed processes to end. */
 export interface ProcessExitWait {
   exitedProcessIds: number[];
@@ -87,6 +94,12 @@ export declare const PLAYWRIGHT_BROWSERS_FOLDER: "ms-playwright";
 export declare const WEBKIT_EXECUTABLES: readonly string[];
 export declare const TERMINATION_WAIT_TIMEOUT_MS: number;
 export declare const TERMINATION_POLL_INTERVAL_MS: number;
+export declare const TERMINATION_MIN_QUERY_TIMEOUT_MS: number;
+export declare function checkProcessIdentity(
+  processInstances: ProcessInstance[],
+  runningStartTimes: Map<number, number | null>,
+): ProcessIdentityCheck;
+export declare function computeQueryTimeoutMs(remainingMs: number, queryTimeoutMs?: number): number;
 
 export declare function isPlaywrightWebKitExecutable(executablePath: string | null): boolean;
 export declare function isParentAlive(
@@ -106,7 +119,7 @@ export declare function selectStillRunningProcessIds(
 ): number[];
 export declare function waitForProcessExit(options: {
   closedProcesses: ProcessInstance[];
-  readProcessStartTimes: (processIds: number[]) => Promise<Map<number, number | null>>;
+  readProcessStartTimes: (processIds: number[], queryOptions: { timeoutMs: number }) => Promise<Map<number, number | null>>;
   clock?: Clock;
   timeoutMs?: number;
   pollIntervalMs?: number;

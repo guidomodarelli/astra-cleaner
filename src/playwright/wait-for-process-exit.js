@@ -6,12 +6,19 @@
  * close by checking that the same instance (same id and start time) no longer runs.
  */
 import { setTimeout as sleepFor } from "node:timers/promises";
-import { TERMINATION_POLL_INTERVAL_MS, TERMINATION_WAIT_TIMEOUT_MS } from "./constants.js";
+import {
+  PROCESS_SNAPSHOT_TIMEOUT_MS,
+  TERMINATION_MIN_QUERY_TIMEOUT_MS,
+  TERMINATION_POLL_INTERVAL_MS,
+  TERMINATION_WAIT_TIMEOUT_MS,
+} from "./constants.js";
+import { checkProcessIdentity } from "./process-identity.js";
+
+/** @typedef {import("./process-identity.js").ProcessInstance} ProcessInstance */
 
 /**
- * @typedef {object} ProcessInstance
- * @property {number} processId - Process id.
- * @property {number | null} startedAtMs - Start time in Unix milliseconds, or `null` when unknown.
+ * @typedef {object} ProcessQueryOptions
+ * @property {number} timeoutMs - Longest time the query may take.
  */
 
 /**
@@ -45,23 +52,32 @@ export const systemClock = {
  * @returns {number[]} Ids of the instances still running, in input order.
  */
 export function selectStillRunningProcessIds(closedProcesses, runningStartTimes) {
+  const { goneProcessIds } = checkProcessIdentity(closedProcesses, runningStartTimes);
+  const goneProcessIdSet = new Set(goneProcessIds);
   return closedProcesses
-    .filter((closedProcess) => {
-      if (!runningStartTimes.has(closedProcess.processId)) return false;
-      const runningStartedAtMs = runningStartTimes.get(closedProcess.processId);
-      if (runningStartedAtMs == null || closedProcess.startedAtMs == null) return true;
-      return runningStartedAtMs === closedProcess.startedAtMs;
-    })
-    .map((closedProcess) => closedProcess.processId);
+    .map((closedProcess) => closedProcess.processId)
+    .filter((processId) => !goneProcessIdSet.has(processId));
 }
 
 /**
- * Polls in batches until every closed process is gone or the timeout passes. A failed query stops the wait and leaves
- * the pending processes as unconfirmed; it never throws.
+ * Timeout of the next liveness query: the time left before the deadline, capped by the usual query timeout and never
+ * below {@link TERMINATION_MIN_QUERY_TIMEOUT_MS}.
+ * @param {number} remainingMs - Time left before the deadline.
+ * @param {number} [queryTimeoutMs] - Usual timeout of a query.
+ * @returns {number} Timeout for the query, in milliseconds.
+ */
+export function computeQueryTimeoutMs(remainingMs, queryTimeoutMs = PROCESS_SNAPSHOT_TIMEOUT_MS) {
+  return Math.max(TERMINATION_MIN_QUERY_TIMEOUT_MS, Math.min(queryTimeoutMs, remainingMs));
+}
+
+/**
+ * Polls in batches until every closed process is gone or the timeout passes. Each query is cut to the time left, and
+ * once the deadline passes no further query runs. A failed query stops the wait and leaves the pending processes as
+ * unconfirmed; it never throws.
  * @param {object} options - Processes to watch and how to watch them.
  * @param {ProcessInstance[]} options.closedProcesses - Processes that were asked to end.
- * @param {(processIds: number[]) => Promise<Map<number, number | null>>} options.readProcessStartTimes - Reads the
- * start time of the given processes that still run.
+ * @param {(processIds: number[], queryOptions: ProcessQueryOptions) => Promise<Map<number, number | null>>} options.readProcessStartTimes
+ * - Reads the start time of the given processes that still run, within the query timeout.
  * @param {Clock} [options.clock] - Time source, replaceable for tests.
  * @param {number} [options.timeoutMs] - Longest wait.
  * @param {number} [options.pollIntervalMs] - Pause between queries.
@@ -80,9 +96,14 @@ export async function waitForProcessExit({
   let pendingProcesses = closedProcesses;
 
   while (pendingProcesses.length > 0) {
+    const remainingMs = deadlineMs - clock.now();
+    if (remainingMs <= 0) break;
     let runningStartTimes;
     try {
-      runningStartTimes = await readProcessStartTimes(pendingProcesses.map((pendingProcess) => pendingProcess.processId));
+      runningStartTimes = await readProcessStartTimes(
+        pendingProcesses.map((pendingProcess) => pendingProcess.processId),
+        { timeoutMs: computeQueryTimeoutMs(remainingMs) },
+      );
     } catch (error) {
       onQueryError(error);
       break;
