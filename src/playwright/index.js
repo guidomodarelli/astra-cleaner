@@ -12,8 +12,8 @@ export {
 } from "./constants.js";
 export {
   isParentAlive,
-  isPlaywrightExecutable,
+  isPlaywrightWebKitExecutable,
   selectOrphanWebKitProcessIds,
 } from "./select-orphan-webkit-process-ids.js";
 export { parseProcessSnapshot, windowsProcessSystem } from "./windows-process-system.js";
-export { cleanOrphanWebKitProcesses, playwrightCleanupApplies } from "./clean-orphan-webkit-processes.js";
+export { cleanOrphanWebKitProcesses, describeError, playwrightCleanupApplies } from "./clean-orphan-webkit-processes.js";

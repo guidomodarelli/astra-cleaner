@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { cleanOrphanWebKitProcesses } from "../../src/playwright/clean-orphan-webkit-processes.js";
+import { cleanOrphanWebKitProcesses, describeError } from "../../src/playwright/clean-orphan-webkit-processes.js";
 
 const WINDOWS_PLATFORM = "win32";
 const ORPHAN_PROCESS = {
@@ -120,6 +120,18 @@ describe("cleanOrphanWebKitProcesses", () => {
     assert.match(output.warnings.join("\n"), /terminateProcess failed for pid=100: EPERM/u);
   });
 
+  it("warns with the error code when a process stuck while terminating cannot be closed", async () => {
+    const system = createProcessSystem({
+      terminateProcess: () => {
+        throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+      },
+    });
+    const output = createOutput();
+    const result = await cleanOrphanWebKitProcesses({ platform: WINDOWS_PLATFORM, system, ...output });
+    assert.deepEqual(result.failedProcessIds, [100]);
+    assert.match(output.warnings[0], /terminateProcess failed for pid=100: EPERM: operation not permitted/u);
+  });
+
   it("describes thrown values that are not errors", async () => {
     const system = createProcessSystem({
       readProcessSnapshot: async () => {
@@ -129,5 +141,14 @@ describe("cleanOrphanWebKitProcesses", () => {
     const output = createOutput();
     await cleanOrphanWebKitProcesses({ platform: WINDOWS_PLATFORM, system, ...output });
     assert.match(output.warnings[0], /access denied/u);
+  });
+});
+
+describe("describeError", () => {
+  it("adds the error code unless the message already names it", () => {
+    assert.equal(describeError(Object.assign(new Error("timed out"), { code: "ETIMEDOUT" })), "ETIMEDOUT: timed out");
+    assert.equal(describeError(Object.assign(new Error("kill EPERM"), { code: "EPERM" })), "kill EPERM");
+    assert.equal(describeError(new Error("plain")), "plain");
+    assert.equal(describeError(42), "42");
   });
 });

@@ -25,12 +25,15 @@ import { windowsProcessSystem } from "./windows-process-system.js";
  */
 
 /**
- * Turns a caught value into a one-line reason for a warning.
+ * Turns a caught value into a one-line reason for a warning, without its stack: the error code when there is one
+ * (`EPERM` for a process stuck while terminating, `ETIMEDOUT` for a stalled query) and its message.
  * @param {unknown} error - Caught value.
- * @returns {string} Its message.
+ * @returns {string} Its code and message.
  */
-function describeError(error) {
-  return error instanceof Error ? error.message : String(error);
+export function describeError(error) {
+  if (!(error instanceof Error)) return String(error);
+  const errorCode = "code" in error && error.code ? String(error.code) : undefined;
+  return errorCode && !error.message.includes(errorCode) ? `${errorCode}: ${error.message}` : error.message;
 }
 
 /**

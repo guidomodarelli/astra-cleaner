@@ -1,9 +1,9 @@
 /** Running WebKit process, as read from Windows. */
 export interface WebKitProcess {
-  /** Process id. */
-  processId: number;
-  /** Id of the process that started it; it may no longer exist. */
-  parentProcessId: number;
+  /** Process id, or `null` when Windows does not report it. */
+  processId: number | null;
+  /** Id of the process that started it, which may no longer exist, or `null` when unknown. */
+  parentProcessId: number | null;
   /** Executable path, or `null` when Windows denies it. */
   executablePath: string | null;
   /** Start time in Unix milliseconds, or `null` when unknown. */
@@ -14,7 +14,7 @@ export interface WebKitProcess {
 export interface ProcessSnapshot {
   /** Running WebKit processes. */
   webKitProcesses: WebKitProcess[];
-  /** Start time of every running process, by id. */
+  /** Start time of the living processes among their parents, by id; a parent missing from it no longer runs. */
   livingProcesses: Map<number, number | null>;
 }
 
@@ -58,9 +58,9 @@ export declare const ORPHAN_CLEANUP_PLATFORM: "win32";
 export declare const PLAYWRIGHT_BROWSERS_FOLDER: "ms-playwright";
 export declare const WEBKIT_EXECUTABLES: readonly string[];
 
-export declare function isPlaywrightExecutable(executablePath: string | null): boolean;
+export declare function isPlaywrightWebKitExecutable(executablePath: string | null): boolean;
 export declare function isParentAlive(
-  webKitProcess: WebKitProcess,
+  webKitProcess: { parentProcessId: number; startedAtMs: number | null },
   livingProcesses: Map<number, number | null>,
 ): boolean;
 export declare function selectOrphanWebKitProcessIds(
@@ -69,5 +69,6 @@ export declare function selectOrphanWebKitProcessIds(
 ): number[];
 export declare function parseProcessSnapshot(stdout: string): ProcessSnapshot;
 export declare const windowsProcessSystem: ProcessSystem;
+export declare function describeError(error: unknown): string;
 export declare function playwrightCleanupApplies(platform: string): boolean;
 export declare function cleanOrphanWebKitProcesses(options?: CleanupOptions): Promise<CleanupResult>;
