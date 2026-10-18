@@ -70,10 +70,11 @@ export function selectStillRunningProcessIds(closedProcesses, runningStartTimes)
  * below {@link TERMINATION_MIN_QUERY_TIMEOUT_MS}.
  * @param {number} remainingMs - Time left before the deadline.
  * @param {number} [queryTimeoutMs] - Usual timeout of a query.
- * @returns {number} Timeout for the query, in milliseconds.
+ * @returns {number} Timeout for the query, in whole milliseconds: the monotonic clock yields fractions, and
+ * `execFile` only accepts an integer timeout.
  */
 export function computeQueryTimeoutMs(remainingMs, queryTimeoutMs = PROCESS_SNAPSHOT_TIMEOUT_MS) {
-  return Math.max(TERMINATION_MIN_QUERY_TIMEOUT_MS, Math.min(queryTimeoutMs, remainingMs));
+  return Math.ceil(Math.max(TERMINATION_MIN_QUERY_TIMEOUT_MS, Math.min(queryTimeoutMs, remainingMs)));
 }
 
 /**

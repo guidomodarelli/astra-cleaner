@@ -115,4 +115,8 @@ describe("computeQueryTimeoutMs", () => {
     assert.equal(computeQueryTimeoutMs(60_000, 30_000), 30_000);
     assert.equal(computeQueryTimeoutMs(100, 30_000), 250);
   });
+
+  it("rounds a fractional time left up to whole milliseconds, as execFile requires", () => {
+    assert.equal(computeQueryTimeoutMs(9_999.9982, 30_000), 10_000);
+  });
 });
