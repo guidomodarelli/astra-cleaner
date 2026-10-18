@@ -25,6 +25,32 @@ export const DIRECTORY_REMOVAL_RETRY_DELAY_MS = 200;
  */
 export const LEFTOVER_ENTRY_NAMES = ["node_modules"];
 
+/**
+ * Variables that point git at a specific repository, index or work tree, as `git rev-parse --local-env-vars` lists
+ * them. Inherited from a git hook or a git-aware wrapper, they would make git inspect another worktree than the one
+ * asked for, so the safety checks run without them.
+ */
+export const LOCAL_GIT_ENVIRONMENT_VARIABLES = [
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_CONFIG",
+  "GIT_CONFIG_PARAMETERS",
+  "GIT_CONFIG_COUNT",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_IMPLICIT_WORK_TREE",
+  "GIT_GRAFT_FILE",
+  "GIT_INDEX_FILE",
+  "GIT_NO_REPLACE_OBJECTS",
+  "GIT_REPLACE_REF_BASE",
+  "GIT_PREFIX",
+  "GIT_SHALLOW_FILE",
+  "GIT_COMMON_DIR",
+];
+
+/** Folder inside a worktree's administrative directory where git keeps its initialized submodules. */
+export const SUBMODULES_FOLDER_NAME = "modules";
+
 /** Prefix of every message this cleanup prints. */
 export const WORKTREES_LOG_PREFIX = "[@astra-kit/cleaner:worktrees]";
 
@@ -38,6 +64,7 @@ export const WORKTREES_LOG_PREFIX = "[@astra-kit/cleaner:worktrees]";
  *   UNCOMMITTED_CHANGES: "uncommitted-changes",
  *   STATUS_UNKNOWN: "status-unknown",
  *   MISSING_DIRECTORY: "missing-directory",
+ *   CONTAINS_SUBMODULES: "contains-submodules",
  * }}
  */
 export const REFUSAL_REASONS = {
@@ -48,4 +75,5 @@ export const REFUSAL_REASONS = {
   UNCOMMITTED_CHANGES: "uncommitted-changes",
   STATUS_UNKNOWN: "status-unknown",
   MISSING_DIRECTORY: "missing-directory",
+  CONTAINS_SUBMODULES: "contains-submodules",
 };

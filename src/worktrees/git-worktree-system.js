@@ -1,6 +1,7 @@
 /** @module worktrees/git-worktree-system Reads worktrees through git and removes their folders with `fs.rmSync`. */
 import { execFile } from "node:child_process";
 import { existsSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import process from "node:process";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
@@ -8,6 +9,8 @@ import {
   DIRECTORY_REMOVAL_RETRY_DELAY_MS,
   GIT_COMMAND_MAX_BUFFER_BYTES,
   GIT_COMMAND_TIMEOUT_MS,
+  LOCAL_GIT_ENVIRONMENT_VARIABLES,
+  SUBMODULES_FOLDER_NAME,
 } from "./constants.js";
 import { parseWorktreeList } from "./parse-worktree-list.js";
 
@@ -25,6 +28,8 @@ import { parseWorktreeList } from "./parse-worktree-list.js";
  * belongs to; throws when it is not inside a repository.
  * @property {(worktreePath: string) => Promise<boolean>} hasUncommittedChanges - Whether the worktree has changes git
  * would lose, untracked files included; throws when its status cannot be read.
+ * @property {(worktreePath: string) => Promise<boolean>} hasInitializedSubmodules - Whether the worktree has
+ * initialized submodules; throws when its administrative directory cannot be found.
  * @property {(folderPath: string) => void} removeFolder - Deletes a folder and everything in it; throws when it cannot.
  * @property {(mainWorktreePath: string) => Promise<void>} pruneWorktrees - Drops the records of worktrees whose
  * folder no longer exists.
@@ -33,13 +38,24 @@ import { parseWorktreeList } from "./parse-worktree-list.js";
 const execFileAsync = promisify(execFile);
 
 /**
- * Runs git in a folder, hidden and bounded by a timeout.
+ * The environment without the variables that would point git at another repository, index or work tree.
+ * @returns {NodeJS.ProcessEnv} Environment for git commands.
+ */
+function createIsolatedGitEnvironment() {
+  const environment = { ...process.env };
+  for (const variableName of LOCAL_GIT_ENVIRONMENT_VARIABLES) delete environment[variableName];
+  return environment;
+}
+
+/**
+ * Runs git in a folder, hidden, bounded by a timeout and isolated from inherited repository variables.
  * @param {string} folderPath - Folder git runs in (`git -C`).
  * @param {string[]} gitArguments - Arguments after `-C <folder>`.
  * @returns {Promise<string>} Standard output.
  */
 async function runGit(folderPath, gitArguments) {
   const { stdout } = await execFileAsync("git", ["-C", folderPath, ...gitArguments], {
+    env: createIsolatedGitEnvironment(),
     maxBuffer: GIT_COMMAND_MAX_BUFFER_BYTES,
     timeout: GIT_COMMAND_TIMEOUT_MS,
     windowsHide: true,
@@ -62,11 +78,20 @@ export const gitWorktreeSystem = {
   },
   listFolderEntries: (folderPath) => readdirSync(folderPath),
   async listWorktrees(folderPath) {
-    return parseWorktreeList(await runGit(folderPath, ["worktree", "list", "--porcelain"]));
+    return parseWorktreeList(await runGit(folderPath, ["worktree", "list", "--porcelain", "-z"]));
   },
   async hasUncommittedChanges(worktreePath) {
     const statusOutput = await runGit(worktreePath, ["status", "--porcelain", "--untracked-files=all"]);
     return statusOutput.trim().length > 0;
+  },
+  async hasInitializedSubmodules(worktreePath) {
+    // A linked worktree keeps its submodules' repositories, with their local branches and commits, under its own
+    // administrative directory (`.git/worktrees/<name>/modules`), which `git worktree prune` deletes.
+    const administrativeDirectory = (
+      await runGit(worktreePath, ["rev-parse", "--path-format=absolute", "--git-dir"])
+    ).trim();
+    const submodulesFolder = path.join(administrativeDirectory, SUBMODULES_FOLDER_NAME);
+    return existsSync(submodulesFolder) && readdirSync(submodulesFolder).length > 0;
   },
   removeFolder(folderPath) {
     // `fs.rmSync` handles paths beyond Windows' 260-character limit, deep inside `node_modules`, where

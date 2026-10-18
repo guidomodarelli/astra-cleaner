@@ -50,7 +50,10 @@ export function formatUsage(commands) {
 
 /**
  * Runs the `cleaner` command. A subcommand that does not apply to the platform does nothing and succeeds.
- * @param {string[]} rawArgv - Arguments after the binary name; a bare `--` separator is ignored.
+ *
+ * For a subcommand that takes paths, `--` ends the options, so a path may start with `-`. For one that takes no
+ * paths, `--` is ignored: `pnpm <script> -- --dry-run` forwards it before the flags.
+ * @param {string[]} rawArgv - Arguments after the binary name.
  * @param {CliOptions} [options] - Platform, subcommands and output, replaceable for tests.
  * @returns {Promise<number>} Process exit code.
  */
@@ -58,22 +61,31 @@ export async function runCli(
   rawArgv,
   { platform = process.platform, commands = CLEANUP_COMMANDS, log = console.log, warn = console.error } = {},
 ) {
-  const argv = rawArgv.filter((argument) => argument !== ARGUMENT_SEPARATOR);
-  if (argv.length === 0 || argv.some((argument) => HELP_FLAGS.includes(argument))) {
-    (argv.length === 0 ? warn : log)(formatUsage(commands));
-    return argv.length === 0 ? EXIT_CODE_USAGE_ERROR : EXIT_CODE_SUCCESS;
+  const separatorIndex = rawArgv.indexOf(ARGUMENT_SEPARATOR);
+  const optionArguments = separatorIndex === -1 ? rawArgv : rawArgv.slice(0, separatorIndex);
+  const argumentsAfterSeparator = separatorIndex === -1 ? [] : rawArgv.slice(separatorIndex + 1);
+  const isEmpty = rawArgv.every((argument) => argument === ARGUMENT_SEPARATOR);
+  if (isEmpty || optionArguments.some((argument) => HELP_FLAGS.includes(argument))) {
+    (isEmpty ? warn : log)(formatUsage(commands));
+    return isEmpty ? EXIT_CODE_USAGE_ERROR : EXIT_CODE_SUCCESS;
   }
 
-  const [commandName, ...commandArguments] = argv;
+  const [commandName, ...argumentsBeforeSeparator] =
+    optionArguments.length > 0 ? optionArguments : argumentsAfterSeparator.splice(0, 1);
   const command = Object.hasOwn(commands, commandName) ? commands[commandName] : undefined;
   if (!command) {
     warn(`${CLI_NAME}: limpieza desconocida "${commandName}".\n\n${formatUsage(commands)}`);
     return EXIT_CODE_USAGE_ERROR;
   }
 
+  // Only path-taking subcommands treat what follows `--` as literal paths; the others read it like any argument.
+  const literalPaths = command.requiresPaths ? argumentsAfterSeparator : [];
+  const commandArguments = command.requiresPaths
+    ? argumentsBeforeSeparator
+    : [...argumentsBeforeSeparator, ...argumentsAfterSeparator.filter((argument) => argument !== ARGUMENT_SEPARATOR)];
   const acceptedFlags = new Set([DRY_RUN_FLAG, ...(command.flags ?? [])]);
   const flags = commandArguments.filter((argument) => argument.startsWith(FLAG_PREFIX));
-  const paths = commandArguments.filter((argument) => !argument.startsWith(FLAG_PREFIX));
+  const paths = [...commandArguments.filter((argument) => !argument.startsWith(FLAG_PREFIX)), ...literalPaths];
   const unknownFlags = flags.filter((flag) => !acceptedFlags.has(flag));
   if (unknownFlags.length > 0) {
     warn(`${CLI_NAME} ${commandName}: opción desconocida ${unknownFlags.join(", ")}.\n\n${formatUsage(commands)}`);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -161,6 +161,50 @@ describe("removeWorktrees with real git", () => {
       assert.equal(existsSync(worktreePath), false);
     },
   );
+
+  it("keeps a worktree with initialized submodules, as git does", async () => {
+    const libraryPath = path.join(fixtureFolder, "library");
+    mkdirSync(libraryPath);
+    await git(libraryPath, ["init", "--initial-branch=main"]);
+    writeFileSync(path.join(libraryPath, "index.js"), "module.exports = {};\n");
+    await git(libraryPath, ["add", "index.js"]);
+    await git(libraryPath, ["commit", "-m", "library"]);
+    const worktreePath = await addWorktree("feature-submodule");
+    await git(worktreePath, ["-c", "protocol.file.allow=always", "submodule", "add", libraryPath, "library"]);
+    await git(worktreePath, ["commit", "-m", "add library submodule"]);
+
+    const result = await removeWorktrees({
+      paths: [worktreePath],
+      force: true,
+      currentDirectory: fixtureFolder,
+      ...createOutput(),
+    });
+    assert.deepEqual(result.refused, [{ path: worktreePath, reason: REFUSAL_REASONS.CONTAINS_SUBMODULES }]);
+    assert.equal(existsSync(path.join(worktreePath, "library", "index.js")), true);
+  });
+
+  it("checks the worktree itself even when an inherited GIT_DIR points at the main repository", async () => {
+    // The worktree's branch commits a new version of .gitignore and then reverts it locally without committing: its own
+    // status shows the change, but read through the main repository's index (which still holds the original), it
+    // looks clean, and that uncommitted change would be lost.
+    const worktreePath = await addWorktree("feature-inherited-git-dir");
+    const gitignorePath = path.join(worktreePath, ".gitignore");
+    // The exact bytes the main repository committed and holds in its index, without the CRLF a checkout may add.
+    const originalGitignore = "node_modules/\n";
+    writeFileSync(gitignorePath, "node_modules/\ndist/\n");
+    await git(worktreePath, ["commit", "-am", "ignore dist"]);
+    writeFileSync(gitignorePath, originalGitignore);
+    const inheritedGitDirectory = process.env.GIT_DIR;
+    process.env.GIT_DIR = path.join(mainPath, ".git");
+    try {
+      const result = await removeWorktrees({ paths: [worktreePath], currentDirectory: fixtureFolder, ...createOutput() });
+      assert.deepEqual(result.refused, [{ path: worktreePath, reason: REFUSAL_REASONS.UNCOMMITTED_CHANGES }]);
+    } finally {
+      if (inheritedGitDirectory === undefined) delete process.env.GIT_DIR;
+      else process.env.GIT_DIR = inheritedGitDirectory;
+    }
+    assert.equal(readFileSync(gitignorePath, "utf8"), originalGitignore);
+  });
 
   it("refuses a plain folder that is not a worktree", async () => {
     const plainFolder = path.join(fixtureFolder, "plain-folder");

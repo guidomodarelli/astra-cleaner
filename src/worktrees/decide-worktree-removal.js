@@ -11,7 +11,7 @@ import { LEFTOVER_ENTRY_NAMES, REFUSAL_REASONS } from "./constants.js";
 
 /**
  * @typedef {"not-a-worktree" | "main-worktree" | "locked" | "contains-current-directory" | "uncommitted-changes" |
- *   "status-unknown" | "missing-directory"} RefusalReason
+ *   "status-unknown" | "missing-directory" | "contains-submodules"} RefusalReason
  */
 
 /**
@@ -28,6 +28,8 @@ import { LEFTOVER_ENTRY_NAMES, REFUSAL_REASONS } from "./constants.js";
  * @property {WorktreeEntry[]} worktrees - Worktrees of the repository the folder belongs to.
  * @property {boolean | null} hasUncommittedChanges - Whether the worktree has changes git would lose (including
  * untracked files), or `null` when its status could not be read.
+ * @property {boolean | null} hasInitializedSubmodules - Whether the worktree has initialized submodules, whose local
+ * branches and commits live only in its administrative directory, or `null` when that could not be read.
  * @property {string} currentDirectory - Working directory of the cleanup, which must survive it.
  * @property {boolean} force - Remove even with uncommitted changes or an unreadable status.
  * @property {string} platform - Platform name, as `process.platform` reports it; paths compare case-insensitively on
@@ -80,7 +82,8 @@ function holdsOnlyLeftovers(folderEntries, platform) {
 /**
  * Decides whether a worktree folder may be removed. Every guard errs on the side of keeping the folder: only an
  * unlocked, linked worktree of the repository, outside the current directory and without changes git would lose, is
- * removed. `force` lifts only the uncommitted-changes guards. An unregistered folder that holds only what a failed
+ * removed. `force` lifts only the uncommitted-changes guards; a worktree with initialized submodules is always kept,
+ * as git itself does, because removing it would delete commits that exist nowhere else. An unregistered folder that holds only what a failed
  * `git worktree remove` leaves behind (`node_modules`) is removed as a leftover, since nothing in it is lost.
  * @param {WorktreeRemovalInput} input - What is known about the folder.
  * @returns {WorktreeRemovalDecision} Whether to remove it, and why not otherwise.
@@ -91,6 +94,7 @@ export function decideWorktreeRemoval({
   folderEntries,
   worktrees,
   hasUncommittedChanges,
+  hasInitializedSubmodules,
   currentDirectory,
   force,
   platform,
@@ -108,7 +112,10 @@ export function decideWorktreeRemoval({
       ? { action: "remove-leftover", worktreePath: targetPath }
       : { action: "refuse", reason: REFUSAL_REASONS.NOT_A_WORKTREE };
   }
-  if (!force && hasUncommittedChanges === null) return { action: "refuse", reason: REFUSAL_REASONS.STATUS_UNKNOWN };
+  if (hasInitializedSubmodules) return { action: "refuse", reason: REFUSAL_REASONS.CONTAINS_SUBMODULES };
+  if (!force && (hasUncommittedChanges === null || hasInitializedSubmodules === null)) {
+    return { action: "refuse", reason: REFUSAL_REASONS.STATUS_UNKNOWN };
+  }
   if (!force && hasUncommittedChanges) return { action: "refuse", reason: REFUSAL_REASONS.UNCOMMITTED_CHANGES };
   const mainWorktree = worktrees.find((entry) => entry.isMain);
   if (!mainWorktree) return { action: "refuse", reason: REFUSAL_REASONS.NOT_A_WORKTREE };

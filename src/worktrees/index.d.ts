@@ -16,7 +16,8 @@ export type RefusalReason =
   | "contains-current-directory"
   | "uncommitted-changes"
   | "status-unknown"
-  | "missing-directory";
+  | "missing-directory"
+  | "contains-submodules";
 
 /** Whether a worktree may be removed, and why not otherwise. */
 export type WorktreeRemovalDecision =
@@ -33,6 +34,8 @@ export interface WorktreeRemovalInput {
   worktrees: WorktreeEntry[];
   /** `null` when the status could not be read. */
   hasUncommittedChanges: boolean | null;
+  /** `null` when it could not be read. */
+  hasInitializedSubmodules: boolean | null;
   currentDirectory: string;
   force: boolean;
   platform: string;
@@ -45,6 +48,7 @@ export interface WorktreeSystem {
   listFolderEntries(folderPath: string): string[];
   listWorktrees(folderPath: string): Promise<WorktreeEntry[]>;
   hasUncommittedChanges(worktreePath: string): Promise<boolean>;
+  hasInitializedSubmodules(worktreePath: string): Promise<boolean>;
   removeFolder(folderPath: string): void;
   pruneWorktrees(mainWorktreePath: string): Promise<void>;
 }
@@ -84,6 +88,7 @@ export declare const REFUSAL_REASONS: {
   UNCOMMITTED_CHANGES: "uncommitted-changes";
   STATUS_UNKNOWN: "status-unknown";
   MISSING_DIRECTORY: "missing-directory";
+  CONTAINS_SUBMODULES: "contains-submodules";
 };
 export declare function toComparablePath(folderPath: string, platform: string): string;
 export declare function decideWorktreeRemoval(input: WorktreeRemovalInput): WorktreeRemovalDecision;

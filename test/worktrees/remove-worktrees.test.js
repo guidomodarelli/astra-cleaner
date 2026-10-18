@@ -33,6 +33,7 @@ function createSystem(overrides = {}) {
     ],
     /** @param {string} worktreePath */
     hasUncommittedChanges: async (worktreePath) => worktreePath === DIRTY_PATH,
+    hasInitializedSubmodules: async () => false,
     /** @param {string} folderPath */
     removeFolder(folderPath) {
       removedFolders.push(folderPath);
@@ -117,6 +118,15 @@ describe("removeWorktrees", () => {
     });
     const result = await removeWorktrees({ ...BASE_OPTIONS, paths: [FEATURE_PATH], system, ...createOutput() });
     assert.deepEqual(result.refused, [{ path: FEATURE_PATH, reason: REFUSAL_REASONS.STATUS_UNKNOWN }]);
+  });
+
+  it("keeps a worktree with initialized submodules, even with force", async () => {
+    const system = createSystem({ hasInitializedSubmodules: async () => true });
+    const output = createOutput();
+    const result = await removeWorktrees({ ...BASE_OPTIONS, paths: [FEATURE_PATH], force: true, system, ...output });
+    assert.deepEqual(result.refused, [{ path: FEATURE_PATH, reason: REFUSAL_REASONS.CONTAINS_SUBMODULES }]);
+    assert.deepEqual(system.removedFolders, []);
+    assert.match(output.warnings.join("\n"), /initialized submodules/u);
   });
 
   it("reports a busy folder with a hint and keeps going with the next one", async () => {

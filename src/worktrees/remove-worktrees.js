@@ -35,6 +35,8 @@ const REFUSAL_EXPLANATIONS = {
   [REFUSAL_REASONS.CONTAINS_CURRENT_DIRECTORY]: "contains the current directory; run the cleanup from elsewhere",
   [REFUSAL_REASONS.UNCOMMITTED_CHANGES]: "has uncommitted changes; commit them or pass --force to discard them",
   [REFUSAL_REASONS.STATUS_UNKNOWN]: "has a status git could not read; pass --force to remove it anyway",
+  [REFUSAL_REASONS.CONTAINS_SUBMODULES]:
+    "has initialized submodules, whose local commits would be lost; remove it with git after handling them",
   [REFUSAL_REASONS.MISSING_DIRECTORY]: "does not exist; run `git worktree prune` in the repository to drop its record",
 };
 
@@ -88,6 +90,8 @@ export async function removeWorktrees({
     let worktrees = [];
     /** @type {boolean | null} */
     let hasUncommittedChanges = null;
+    /** @type {boolean | null} */
+    let hasInitializedSubmodules = null;
     /** @type {string[] | null} */
     let folderEntries = null;
     if (targetExists) {
@@ -113,6 +117,12 @@ export async function removeWorktrees({
         // An unreadable status is kept as unknown; the decision refuses it unless `force`, and the refusal reports it.
         hasUncommittedChanges = null;
       }
+      try {
+        hasInitializedSubmodules = await system.hasInitializedSubmodules(targetPath);
+      } catch {
+        // Unknown, like an unreadable status: kept unless `force`.
+        hasInitializedSubmodules = null;
+      }
     }
 
     const decision = decideWorktreeRemoval({
@@ -121,6 +131,7 @@ export async function removeWorktrees({
       folderEntries,
       worktrees,
       hasUncommittedChanges,
+      hasInitializedSubmodules,
       currentDirectory: system.toCanonicalPath(currentDirectory),
       force,
       platform,

@@ -179,6 +179,23 @@ describe("runCli with subcommands that take paths and flags", () => {
     assert.equal(runs.length, 0);
   });
 
+  it("takes everything after -- as a path for subcommands that take paths", async () => {
+    const { runs, command } = createPathsCommand(undefined);
+    const exitCode = await runCli(["paths", "--dry-run", "--", "-feature", "--help"], {
+      commands: { paths: command },
+      ...createOutput(),
+    });
+    assert.equal(exitCode, EXIT_CODE_SUCCESS);
+    assert.deepEqual(runs[0].paths, ["-feature", "--help"]);
+    assert.equal(runs[0].dryRun, true);
+  });
+
+  it("keeps ignoring -- for subcommands without paths, as pnpm forwards it before the flags", async () => {
+    const { runs, command } = createWindowsOnlyCommand();
+    await runCli(["sample", "--", "--dry-run"], { platform: "win32", commands: { sample: command }, ...createOutput() });
+    assert.equal(runs[0].dryRun, true);
+  });
+
   it("rejects a flag another subcommand accepts", async () => {
     const { command: noFlagsCommand } = createWindowsOnlyCommand();
     const output = createOutput();

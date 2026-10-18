@@ -17,6 +17,7 @@ function createInput(overrides = {}) {
     folderEntries: ["package.json", "src", "node_modules"],
     worktrees: [MAIN_WORKTREE, FEATURE_WORKTREE],
     hasUncommittedChanges: false,
+    hasInitializedSubmodules: false,
     currentDirectory: String.raw`C:\repos\app`,
     force: false,
     platform: "win32",
@@ -116,6 +117,23 @@ describe("decideWorktreeRemoval", () => {
       reason: REFUSAL_REASONS.UNCOMMITTED_CHANGES,
     });
     assert.equal(decideWorktreeRemoval(createInput({ hasUncommittedChanges: true, force: true })).action, "remove");
+  });
+
+  it("never removes a worktree with initialized submodules, even with force", () => {
+    for (const force of [false, true]) {
+      assert.deepEqual(decideWorktreeRemoval(createInput({ hasInitializedSubmodules: true, force })), {
+        action: "refuse",
+        reason: REFUSAL_REASONS.CONTAINS_SUBMODULES,
+      });
+    }
+  });
+
+  it("keeps a worktree whose submodules cannot be checked unless forced", () => {
+    assert.deepEqual(decideWorktreeRemoval(createInput({ hasInitializedSubmodules: null })), {
+      action: "refuse",
+      reason: REFUSAL_REASONS.STATUS_UNKNOWN,
+    });
+    assert.equal(decideWorktreeRemoval(createInput({ hasInitializedSubmodules: null, force: true })).action, "remove");
   });
 
   it("keeps a worktree whose status is unknown unless forced", () => {
