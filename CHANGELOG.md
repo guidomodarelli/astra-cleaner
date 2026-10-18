@@ -4,6 +4,16 @@ Todos los cambios relevantes de `@astra-kit/cleaner` se documentan en este archi
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-18
+
+### Added
+
+- Limpieza `worktrees` (`@astra-kit/cleaner/worktrees` y `cleaner worktrees <ruta>... [--force] [--dry-run]`): borra worktrees de git aunque `git worktree remove` falle por rutas largas en `node_modules`, y también la carpeta que deja un `git worktree remove` fallido. Conserva la rama y nunca borra el worktree principal, uno bloqueado ni la carpeta actual; con cambios sin commitear, solo con `--force`.
+
+### Changed
+
+- La CLI acepta rutas y opciones propias de cada limpieza, y termina con código `1` cuando una limpieza deja algo sin limpiar.
+
 ## [0.2.0] - 2026-10-18
 
 ### Changed
