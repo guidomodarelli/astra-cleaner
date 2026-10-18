@@ -5,6 +5,7 @@
  * the process lingers while terminating and keeps its working directory locked. The cleanup therefore confirms each
  * close by checking that the same instance (same id and start time) no longer runs.
  */
+import { performance } from "node:perf_hooks";
 import { setTimeout as sleepFor } from "node:timers/promises";
 import {
   PROCESS_SNAPSHOT_TIMEOUT_MS,
@@ -36,9 +37,12 @@ import { checkProcessIdentity } from "./process-identity.js";
  * have ended: their state is unknown rather than timed out.
  */
 
-/** Real time, for production runs. */
+/**
+ * Real time, for production runs. `performance.now()` is monotonic, so a system clock change during the wait (an NTP
+ * sync, a time zone or daylight saving change) neither ends it early nor stretches it.
+ */
 export const systemClock = {
-  now: () => Date.now(),
+  now: () => performance.now(),
   /** @param {number} durationMs */
   sleep: async (durationMs) => {
     await sleepFor(durationMs);
