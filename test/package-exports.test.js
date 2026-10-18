@@ -29,3 +29,11 @@ describe("0.1 compatibility", () => {
     assert.equal(playwrightCleanup.isPlaywrightExecutable, playwrightCleanup.isPlaywrightWebKitExecutable);
   });
 });
+
+describe("worktrees export", () => {
+  it("exposes the worktree cleanup through its own entry point", async () => {
+    const worktreesCleanup = await import("@astra-kit/cleaner/worktrees");
+    assert.equal(typeof worktreesCleanup.removeWorktrees, "function");
+    assert.equal(typeof worktreesCleanup.decideWorktreeRemoval, "function");
+  });
+});
