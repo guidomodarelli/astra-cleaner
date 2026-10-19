@@ -1,16 +1,16 @@
-# @astra-kit/cleaner
+# @golfo/cleaner
 
 Limpiezas del entorno de desarrollo, una por dominio. Cada limpieza es independiente (no depende de las otras ni de paquetes de terceros), tiene su decisión pura testeada, un modo `--dry-run` y no hace nada en las plataformas donde no aplica.
 
 | Dominio | Exportación | Subcomando | Plataformas |
 | --- | --- | --- | --- |
-| Procesos huérfanos de WebKit de Playwright | `@astra-kit/cleaner/playwright` | `cleaner playwright` | Windows |
-| Worktrees de git con rutas largas en `node_modules` | `@astra-kit/cleaner/worktrees` | `cleaner worktrees` | Todas |
+| Procesos huérfanos de WebKit de Playwright | `@golfo/cleaner/playwright` | `cleaner playwright` | Windows |
+| Worktrees de git con rutas largas en `node_modules` | `@golfo/cleaner/worktrees` | `cleaner worktrees` | Todas |
 
 ## Instalación
 
 ```bash
-pnpm add -D @astra-kit/cleaner
+pnpm add -D @golfo/cleaner
 ```
 
 Requiere Node.js 20 o superior.
@@ -59,12 +59,12 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   // Barre los huérfanos de corridas abortadas anteriores y los de esta corrida.
-  globalSetup: "@astra-kit/cleaner/playwright/global-setup",
-  globalTeardown: "@astra-kit/cleaner/playwright/global-teardown",
+  globalSetup: "@golfo/cleaner/playwright/global-setup",
+  globalTeardown: "@golfo/cleaner/playwright/global-teardown",
 });
 ```
 
-Playwright resuelve esos especificadores con `require.resolve` desde la carpeta del config y llama a cada entrada con su config, que la limpieza ignora (no lo toma como opciones). Si el config ya tiene su propio `globalSetup`, pasá una lista: `globalSetup: ["@astra-kit/cleaner/playwright/global-setup", "./e2e/setup.ts"]`.
+Playwright resuelve esos especificadores con `require.resolve` desde la carpeta del config y llama a cada entrada con su config, que la limpieza ignora (no lo toma como opciones). Si el config ya tiene su propio `globalSetup`, pasá una lista: `globalSetup: ["@golfo/cleaner/playwright/global-setup", "./e2e/setup.ts"]`.
 
 ### Desde la terminal
 
@@ -78,7 +78,7 @@ Fuera de Windows el subcomando informa que no aplica y termina con código 0.
 ### Desde código
 
 ```js
-import { cleanOrphanWebKitProcesses, selectOrphanWebKitProcessIds } from "@astra-kit/cleaner/playwright";
+import { cleanOrphanWebKitProcesses, selectOrphanWebKitProcessIds } from "@golfo/cleaner/playwright";
 
 const result = await cleanOrphanWebKitProcesses({ dryRun: true });
 // { applies, orphanProcessIds, terminatedProcessIds, stillRunningProcessIds, failedProcessIds }
@@ -121,7 +121,7 @@ pnpm exec cleaner worktrees ../app-wip --force         # descarta cambios sin co
 ### Desde código
 
 ```js
-import { removeWorktrees, decideWorktreeRemoval } from "@astra-kit/cleaner/worktrees";
+import { removeWorktrees, decideWorktreeRemoval } from "@golfo/cleaner/worktrees";
 
 const result = await removeWorktrees({ paths: ["../app-feature"], dryRun: true });
 // { removedPaths, refused: [{ path, reason }], failed: [{ path, error }] }
@@ -146,7 +146,7 @@ cleaner --help
 
 ## Agregar una limpieza
 
-Cada dominio vive en `src/<dominio>/` con su `index.js` (y `index.d.ts`), se exporta como `@astra-kit/cleaner/<dominio>` en `package.json` y se registra como subcomando en `src/cli/commands.js`. No importa código de otro dominio. Debe tener:
+Cada dominio vive en `src/<dominio>/` con su `index.js` (y `index.d.ts`), se exporta como `@golfo/cleaner/<dominio>` en `package.json` y se registra como subcomando en `src/cli/commands.js`. No importa código de otro dominio. Debe tener:
 
 - una función pura de decisión con tests unitarios;
 - un modo `dryRun` que solo informe;
@@ -164,12 +164,12 @@ npm run ci   # typecheck, tests y npm pack --dry-run
 
 ## Publicación
 
-Se publica con [`@astra-kit/rp`](https://github.com/guidomodarelli/astra-rp) desde `main`, y el workflow `release.yml` de GitHub Actions publica con [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC), sin tokens de npm:
+Se publica con [`@golfo/rp`](https://github.com/guidomodarelli/golfo-rp) desde `main`, y el workflow `release.yml` de GitHub Actions publica con [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC), sin tokens de npm:
 
 1. Escribir las entradas del release en `## [Unreleased]` de `CHANGELOG.md`, sin versión ni fecha. Si faltan, `changelogDraft` las redacta con Claude Code o Codex.
 2. Correr `npm run create-version` (alias `npm run cv`; por ejemplo `npm run cv -- --minor`). El comando corre `npm run ci`, crea el commit `X.Y.Z` (que cierra `[Unreleased]` como `## [X.Y.Z] - AAAA-MM-DD`) y el tag `vX.Y.Z`, los pushea y despacha `release.yml`, que verifica el tag y publica con procedencia.
 
-La configuración vive en `astra-rp.config.js`. `npm publish` directo queda bloqueado para pnpm, yarn y bun por `astra-rp guard-publish`.
+La configuración vive en `golfo-rp.config.js`. `npm publish` directo queda bloqueado para pnpm, yarn y bun por `golfo-rp guard-publish`.
 
 ## Licencia
 

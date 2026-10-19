@@ -21,7 +21,7 @@ describe("windowsProcessSystem on Windows", { skip: !isWindows && "only Windows 
 
   before(async () => {
     // A copy of node.exe named like a WebKit helper under an `ms-playwright` folder, started by this test process.
-    temporaryFolder = await mkdtemp(path.join(tmpdir(), "astra-cleaner-"));
+    temporaryFolder = await mkdtemp(path.join(tmpdir(), "golfo-cleaner-"));
     const webKitFolder = path.join(temporaryFolder, "ms-playwright", "webkit-0000", "Playwright");
     await mkdir(webKitFolder, { recursive: true });
     const fakeHelperPath = path.join(webKitFolder, "WebKitWebProcess.exe");

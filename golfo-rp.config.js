@@ -1,12 +1,12 @@
 /**
- * `astra-rp create-version` configuration of `@astra-kit/cleaner`: validate with
+ * `golfo-rp create-version` configuration of `@golfo/cleaner`: validate with
  * `npm run ci`, then publish to npm from the `release.yml` workflow through npm
  * trusted publishing (OIDC), so no npm token is stored in the repository.
  *
- * @module astra-rp.config
+ * @module golfo-rp.config
  */
 
-/** @type {import("@astra-kit/rp/create-version").CreateVersionConfig} */
+/** @type {import("@golfo/rp/create-version").CreateVersionConfig} */
 export default {
   releaseTypeDescriptions: {
     patch: "Solo arreglos o cambios internos; la API pública y la CLI no cambian.",
@@ -18,7 +18,7 @@ export default {
   publication: { authentication: "oidc" },
   releaseTimeZone: "America/Argentina/Buenos_Aires",
   changelogDraft: true,
-  summary: ["Consumidores: pnpm add -D @astra-kit/cleaner@^{version}"],
+  summary: ["Consumidores: pnpm add -D @golfo/cleaner@^{version}"],
 };
 
 /** GitHub Actions workflow used by create-version. */
