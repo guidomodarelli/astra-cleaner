@@ -1,5 +1,5 @@
 /**
- * @module @astra-kit/cleaner/worktrees Removes git worktrees whose `git worktree remove` fails on Windows' long paths.
+ * @module @golfo/cleaner/worktrees Removes git worktrees whose `git worktree remove` fails on Windows' long paths.
  *
  * Inside `node_modules`, paths easily pass Windows' 260-character limit and `git worktree remove` stops with
  * "Filename too long", leaving a half-deleted folder still registered. `fs.rmSync` handles those paths, and

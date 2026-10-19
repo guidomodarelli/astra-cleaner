@@ -13,7 +13,7 @@ const execFileAsync = promisify(execFile);
 /** Deeper than Windows' 260-character MAX_PATH once joined to the temporary folder. */
 const LONG_PATH_MIN_LENGTH = 300;
 /** Identity for the fixture commits, so the test does not depend on the machine's git config. */
-const GIT_IDENTITY = ["-c", "user.name=astra-cleaner test", "-c", "user.email=test@example.invalid"];
+const GIT_IDENTITY = ["-c", "user.name=golfo-cleaner test", "-c", "user.email=test@example.invalid"];
 
 /**
  * Runs git in a folder.
@@ -47,7 +47,7 @@ describe("removeWorktrees with real git", () => {
   before(async () => {
     // The native real path expands short (8.3) names, such as the Windows runner's RUNNER~1, into the long path git
     // and the cleanup report.
-    fixtureFolder = realpathSync.native(mkdtempSync(path.join(tmpdir(), "astra-cleaner-worktrees-")));
+    fixtureFolder = realpathSync.native(mkdtempSync(path.join(tmpdir(), "golfo-cleaner-worktrees-")));
     mainPath = path.join(fixtureFolder, "app");
     mkdirSync(mainPath);
     await git(mainPath, ["init", "--initial-branch=main"]);

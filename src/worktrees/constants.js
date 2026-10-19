@@ -52,7 +52,7 @@ export const LOCAL_GIT_ENVIRONMENT_VARIABLES = [
 export const SUBMODULES_FOLDER_NAME = "modules";
 
 /** Prefix of every message this cleanup prints. */
-export const WORKTREES_LOG_PREFIX = "[@astra-kit/cleaner:worktrees]";
+export const WORKTREES_LOG_PREFIX = "[@golfo/cleaner:worktrees]";
 
 /**
  * Why a worktree is not removed.

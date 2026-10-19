@@ -24,7 +24,7 @@ export const PROCESS_SNAPSHOT_TIMEOUT_MS = 30_000;
 export const PROCESS_SNAPSHOT_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 
 /** Prefix of every message this cleanup prints, so its output is easy to find in a test log. */
-export const PLAYWRIGHT_LOG_PREFIX = "[@astra-kit/cleaner:playwright]";
+export const PLAYWRIGHT_LOG_PREFIX = "[@golfo/cleaner:playwright]";
 
 /**
  * Longest wait for closed processes to really end. TerminateProcess can return while a process with pending I/O is

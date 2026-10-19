@@ -1,8 +1,12 @@
 # Changelog
 
-Todos los cambios relevantes de `@astra-kit/cleaner` se documentan en este archivo, según [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Semantic Versioning](https://semver.org/lang/es/).
+Todos los cambios relevantes de `@golfo/cleaner` se documentan en este archivo, según [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
+
+### Changed
+
+- **Cambio incompatible:** el paquete pasa a llamarse `@golfo/cleaner`, sin alias ni compatibilidad con el nombre anterior. Hay que reinstalarlo con `pnpm add -D @golfo/cleaner` y actualizar las importaciones y las entradas de `playwright.config` a `@golfo/cleaner/playwright`, `@golfo/cleaner/playwright/global-setup`, `@golfo/cleaner/playwright/global-teardown` y `@golfo/cleaner/worktrees`. Los mensajes de la consola ahora usan los prefijos `[@golfo/cleaner:playwright]` y `[@golfo/cleaner:worktrees]`. El repositorio pasa a `github.com/guidomodarelli/golfo-cleaner`.
 
 ## [0.3.0] - 2026-10-18
 

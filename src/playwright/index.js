@@ -1,5 +1,5 @@
 /**
- * @module @astra-kit/cleaner/playwright Closes Playwright WebKit processes that outlived the run that started them.
+ * @module @golfo/cleaner/playwright Closes Playwright WebKit processes that outlived the run that started them.
  *
  * On Windows, ending a process does not end its children. When a Playwright run dies abruptly (an agent tool
  * timeout, a closed terminal, `TerminateProcess`), `globalTeardown` never runs and WebKit's processes stay alive

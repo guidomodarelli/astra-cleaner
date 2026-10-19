@@ -1,5 +1,5 @@
 {
-  "name": "@astra-kit/cleaner",
+  "name": "@golfo/cleaner",
   "version": "0.3.0",
   "description": "Limpiezas del entorno de desarrollo: procesos huérfanos de WebKit de Playwright en Windows y worktrees de git con rutas largas.",
   "type": "module",
@@ -7,10 +7,10 @@
   "author": "Guido Modarelli",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/guidomodarelli/astra-cleaner.git"
+    "url": "git+https://github.com/guidomodarelli/golfo-cleaner.git"
   },
-  "homepage": "https://github.com/guidomodarelli/astra-cleaner#readme",
-  "bugs": "https://github.com/guidomodarelli/astra-cleaner/issues",
+  "homepage": "https://github.com/guidomodarelli/golfo-cleaner#readme",
+  "bugs": "https://github.com/guidomodarelli/golfo-cleaner/issues",
   "keywords": [
     "playwright",
     "webkit",
@@ -56,15 +56,15 @@
     "typecheck": "tsc -p tsconfig.json",
     "pack:check": "npm pack --dry-run",
     "ci": "npm run typecheck && npm test && npm run pack:check",
-    "create-version": "astra-rp create-version",
-    "cv": "astra-rp create-version",
-    "prepublishOnly": "astra-rp guard-publish"
+    "create-version": "golfo-rp create-version",
+    "cv": "golfo-rp create-version",
+    "prepublishOnly": "golfo-rp guard-publish"
   },
   "publishConfig": {
     "access": "public"
   },
   "devDependencies": {
-    "@astra-kit/rp": "^1.0.0",
+    "@golfo/rp": "^1.0.0",
     "@types/node": "^24.19.2",
     "typescript": "^5.9.3"
   }
