@@ -64,7 +64,7 @@
     "access": "public"
   },
   "devDependencies": {
-    "@golfo/rp": "^1.0.0",
+    "@golfo/rp": "^2.0.0",
     "@types/node": "^24.19.2",
     "typescript": "^5.9.3"
   }
