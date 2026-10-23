@@ -28,6 +28,9 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # A normal release (install, checks and publish) takes a few minutes; the limit stops a hung
+    # step instead of letting it block the release concurrency group for hours.
+    timeout-minutes: 15
     env:
       HUSKY: '0'
 
